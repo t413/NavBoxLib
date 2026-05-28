@@ -1,0 +1,26 @@
+{
+  "name": "NavBoxLib",
+  "version": "1.0.0",
+  "description": "Embedded map engine for LVGL",
+  "keywords": [
+    "lvgl", "maps", "gps", "osm", "offline", "tiles", "esp32"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/t413/NavBoxLib.git"
+  },
+  "authors": [
+    {
+      "name": "Tim O'Brien",
+      "email": "timo@t413.com",
+      "url": "https://github.com/t413"
+    }
+  ],
+  "license": "GPL-3.0-or-later",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "lvgl/lvgl": "^8.4.0",
+    "bitbank2/PNGdec": "^1.0.3"
+  }
+}
