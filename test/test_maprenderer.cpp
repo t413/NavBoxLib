@@ -10,8 +10,8 @@ using namespace fixtures;
 
 static const TrackPoint TEST_CENTER(37.87125, -122.31767);
 
-constexpr string TILE_FMT_END = "/%d/%d/%d.png";
-constexpr string TILE_FMT = "/tmp" + TILE_FMT_END;
+const std::string TILE_FMT_END = "/%d/%d/%d.png";
+const std::string TILE_FMT = "/tmp" + TILE_FMT_END;
 constexpr int TEST_Z = 10;
 constexpr int TEST_X = 512;
 constexpr int TEST_Y = 512;

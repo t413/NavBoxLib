@@ -2,8 +2,9 @@
 
 Like Leaflet or google maps web view, but for microcontrollers!
 
+[![Top Language](https://img.shields.io/github/languages/top/t413/NavBoxLib?style=flat-square)](https://github.com/t413/NavBoxLib)
 [![License](https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square)](https://github.com/t413/navboxlib/blob/master/LICENSE)
-![Platformio](https://img.shields.io/badge/Platform-IO-blue?style=flat-square)
+![Tests](https://img.shields.io/github/actions/workflow/status/t413/NavBoxLib/platformio.yaml?style=flat-square)
 
 <p align="center">
   <a href="https://t413.com/p/projects/NavBoxLib/dropped-2026-05-28T23-23-08-931Z-heart.gif"><img src="https://t413.com/p/projects/NavBoxLib/dropped-2026-05-28T23-23-08-931Z-heart.gif" alt="maps in action"></a>

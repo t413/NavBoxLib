@@ -3,6 +3,7 @@
 #include "fileclass.h"
 #include "log.h"
 #include <lvgl.h>
+#include <time.h>
 
 void TrackLog::clear() {
     path_.clear();
@@ -20,11 +21,7 @@ void TrackLog::_epochToIso(uint32_t epoch, char* out, uint16_t outsize) {
     }
     time_t rawtime = (time_t)epoch;
     struct tm * ti;
-#ifdef ARDUINO
     ti = gmtime(&rawtime);
-#else
-    ti = std::gmtime(&rawtime);
-#endif
     snprintf(out, outsize, "%04d-%02d-%02dT%02d:%02d:%02dZ",
             ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday,
             ti->tm_hour, ti->tm_min, ti->tm_sec);

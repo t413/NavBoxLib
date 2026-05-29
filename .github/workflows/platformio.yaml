@@ -1,0 +1,50 @@
+name: PlatformIO CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio requests
+
+    - name: Cache PlatformIO and Tiles
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.piocache
+          tiles
+        key: ${{ runner.os }}-pio-tiles-${{ hashFiles('**/platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-tiles-
+
+    - name: Download tiles
+      run: |
+        wget -O osm2edgetx.py https://github.com/t413/osm2edgetx/raw/refs/heads/main/osm2edgetx.py
+        python osm2edgetx.py --osm tiles --fetch "37.87,-122.32" --radius 1 --zoom 16 --url https://t413.com/map/tiles/
+
+    - name: Run unit tests
+      run: |
+        export PLATFORMIO_BUILD_FLAGS="-D__LINUX__"
+        pio test -e test_native -vv
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: testoutputs
+        path: testoutputs/*
