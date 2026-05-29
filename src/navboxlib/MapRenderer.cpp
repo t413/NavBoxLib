@@ -206,24 +206,38 @@ void MapRenderer::_updateTiles() {
     const int px_s = (int)round((tx_s - tx) * sts + width_  / 2.0);
     const int py_s = (int)round((ty_s - ty) * sts + height_ / 2.0);
 
+    // Compute grid dimensions from canvas size
+    const int cols = (int)ceil((double)width_  / sts) + 1;
+    const int rows = (int)ceil((double)height_ / sts) + 1;
+    const int gridSize = cols * rows;
+
     for (int j = 0; j < TILECACHE_SIZE; j++) cache_[j].onscreen = 0; //reset all
     struct TileSlot { int x,y; int tx,ty; };
     TileSlot missing[TILECACHE_SIZE] = {0};
     uint8_t missingIdx = 0;
 
-    // Step 1: Identify and mark existing tiles in cache
-    for (uint8_t i = 0; i < 4; i++) {
-        const int x = ((tx_s + (i % 2)) % nTiles + nTiles) % nTiles; // osm [z/x/y]
-        const int y = ty_s + (i / 2);
-        if (y < 0 || y >= nTiles) continue;
-        const int tpx = px_s + (i % 2) * (int)sts; // on-screen pixel dest
-        const int tpy = py_s + (i / 2) * (int)sts;
+    // Step 1: mark existing tiles; collect missing
+    for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < cols; col++) {
+            if (missingIdx >= TILECACHE_SIZE) break; // safety
 
-        int idx = _findTile(x, y, zoom_);
-        if (idx != -1) { //found pre-loaded
-            cache_[idx].update(tpx, tpy, true, magnification_);
-        } else { //add to missing
-            missing[missingIdx++] = { x, y, tpx, tpy };
+            const int gx = ((tx_s + col) % nTiles + nTiles) % nTiles;
+            const int gy = ty_s + row;
+            if (gy < 0 || gy >= nTiles) continue;
+
+            const int tpx = px_s + col * (int)sts;
+            const int tpy = py_s + row * (int)sts;
+
+            // Skip tiles entirely outside the canvas
+            if (tpx + (int)sts <= 0 || tpx >= width_)  continue;
+            if (tpy + (int)sts <= 0 || tpy >= height_) continue;
+
+            int idx = _findTile(gx, gy, zoom_);
+            if (idx != -1) {
+                cache_[idx].update(tpx, tpy, true, magnification_);
+            } else {
+                missing[missingIdx++] = { gx, gy, tpx, tpy };
+            }
         }
     }
 

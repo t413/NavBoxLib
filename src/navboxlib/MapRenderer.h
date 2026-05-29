@@ -14,6 +14,9 @@ constexpr double DEFAULT_LON = -122.2712;
 typedef int8_t zoom_t;
 constexpr zoom_t ZOOM_UNCHANGED = -1;
 constexpr int8_t MAGNF_AUTO = -1;
+#ifndef TILECACHE_SIZE
+#define TILECACHE_SIZE 4
+#endif
 
 class MapLayer;
 struct Marker;
@@ -33,7 +36,6 @@ public:
         void update(int px, int py, bool visible, int8_t magnification = 1);
         void clear();
     };
-    static constexpr uint8_t TILECACHE_SIZE = 4;
     struct XY { int16_t x, y; };
 
     MapRenderer() = default;
