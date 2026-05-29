@@ -19,6 +19,8 @@ uint16_t MarkerLayer::add(const Marker& marker) {
     lv_obj_set_style_radius(m.obj_, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_border_color(m.obj_, lv_color_white(), 0);
     lv_obj_set_style_border_width(m.obj_, 2, 0);
+    lv_obj_set_style_pad_all(m.obj_, 0, 0);
+    lv_obj_set_scrollbar_mode(m.obj_, LV_SCROLLBAR_MODE_OFF);
     if (marker.label != 0) {
         char buf[2] = {marker.label, 0};
         auto lbl = lv_label_create(m.obj_);
