@@ -16,11 +16,11 @@ public:
     ~PixelBuffer();
 
     bool allocate(coord_t width, coord_t height, coord_t offsetX = 0, coord_t offsetY = 0);
-    void clear();
+    void clear(bool freemem);
     void drawPixelAbs(coord_t x, coord_t y, pixel_t value);
     pixel_t* getPixelPtrAbs(coord_t x, coord_t y);
 
-    pixel_t* getData() const { return data_; }
+    pixel_t* getData() const { return (pixel_t*) data_; }
     uint32_t size() const { return width_ * height_; }
     bool valid() const { return width_ + height_ > 0 && data_ != nullptr; }
 
@@ -32,11 +32,12 @@ public:
     int getOffsetY() const { return offsetY_; }
     bool isSparse() const { return offsetX_ != 0 || offsetY_ != 0; }
 
-    pixel_t* data_ = nullptr; // RGB565 data for LVGL compatibility
     coord_t uncroppedW_ = 0, uncroppedH_ = 0;
     coord_t width_ = 0, height_ = 0;
 
-private:
+protected:
+    uint8_t* data_ = nullptr; // RGB565 data for LVGL compatibility
+    uint32_t datalen_ = 0;
     int offsetX_, offsetY_;  // Offset within original image for sparse buffers
 };
 

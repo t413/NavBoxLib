@@ -7,25 +7,33 @@
 
 
 PixelBuffer::~PixelBuffer() {
-    clear();
+    clear(true);
 }
 
 bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord_t offsetY) {
-    clear();
-    data_ = (uint16_t*)malloc(width * height * sizeof(pixel_t));
-    if (data_) {
-        width_ = width;
-        height_ = height;
-        offsetX_ = offsetX;
-        offsetY_ = offsetY;
-        return true;
+    uint32_t sizereq = width * height * sizeof(pixel_t);
+    if (sizereq < datalen_ && data_) {
+        clear(false); //don't free, reuse memory
+        MAP_LOG("pxl:alloc reusing %d (have %d)", sizereq, datalen_);
+    } else {
+        clear(true); //free
+        data_ = (uint8_t*)malloc(sizereq);
+        if (!data_) { return false; }
+        datalen_ = sizereq;
     }
-    return false;
+    width_ = width;
+    height_ = height;
+    offsetX_ = offsetX;
+    offsetY_ = offsetY;
+    return true;
 }
 
-void PixelBuffer::clear() {
-    if (data_) free(data_);
-    data_ = nullptr;
+void PixelBuffer::clear(bool freemem) {
+    if (freemem && data_) {
+        free(data_);
+        data_ = nullptr;
+        datalen_ = 0;
+    }
     width_ = height_ = 0;
     offsetX_ = offsetY_ = 0;
 }
@@ -38,7 +46,9 @@ void PixelBuffer::drawPixelAbs(coord_t x, coord_t y, pixel_t value) {
 }
 
 pixel_t* PixelBuffer::getPixelPtrAbs(coord_t x, coord_t y) {
-    return &data_[y * width_ + x];
+    if (!data_ || x >= width_ || y >= height_) return nullptr;
+    auto data = (pixel_t*) data_;
+    return &data[y * width_ + x];
 }
 
 static PNG _png;
@@ -114,6 +124,12 @@ bool PixelBuffer::loadImg(const char* path, const Bounds &b) {
         ah = ctx.b.bttm - ctx.b.top;
         // MAP_LOG("pxl::load %s [%dx%d] cropped (%d,%d,%d,%d)]", path, fw, fh, ctx.b.left, ctx.b.top, ctx.b.right, ctx.b.bttm);
     }
+    if (aw == 0 || ah == 0) {
+        MAP_LOG("pxl:load 0-size image %dx%d", aw, ah);
+        _png.close();
+        clear(false);
+        return false;
+    }
 
     if (!allocate(aw, ah, ctx.b.left, ctx.b.top)) {
         MAP_LOG("pxl::load failed, OOM (free: %d)", freeHeap());
@@ -126,7 +142,7 @@ bool PixelBuffer::loadImg(const char* path, const Bounds &b) {
     _png.close();
 
     if (rc != PNG_SUCCESS) {
-        clear();
+        clear(false);
         MAP_LOG("pxl::load %s decode failed", path);
         return false;
     }

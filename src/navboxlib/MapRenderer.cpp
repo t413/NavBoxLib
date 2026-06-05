@@ -15,7 +15,7 @@ const PixelBuffer* MapRenderer::TileCacheEntry::load(int ox, int oy, int oz, con
         dsc_.header.h = buffer.height_;
         dsc_.data_size = buffer.width_ * buffer.height_ * sizeof(uint16_t);
         dsc_.header.cf = LV_IMG_CF_TRUE_COLOR;
-        dsc_.data = (const uint8_t*)buffer.data_;
+        dsc_.data = (const uint8_t*)buffer.getData();
         return &buffer;
     } else MAP_LOG("tile::load failed loading %s (free: %u)", path, freeHeap());
     return nullptr;
@@ -38,12 +38,12 @@ void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t ma
 void MapRenderer::TileCacheEntry::clear() {
     z = -1, x = -1, y = -1;
     update(0,0,false);
-    buffer.clear();
+    buffer.clear(false); //don't free memory
 }
 
 MapRenderer::~MapRenderer() {
     for (auto& t : cache_)
-        t.buffer.clear();
+        t.buffer.clear(true);
     for (auto& layer : layers_) {
         if (layer == markerLayer_) markerLayer_ = nullptr;
         delete layer;

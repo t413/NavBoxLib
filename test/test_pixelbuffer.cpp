@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <navboxlib/PixelBuffer.h>
 #include <lvgl.h>
+#include <navboxlib/log.h>
 #include "fixtures.h"
 
 using namespace std;
@@ -16,7 +17,7 @@ TEST(PixelBuffer, setup) {
     EXPECT_TRUE(pb.valid());
     EXPECT_EQ(pb.getOffsetX() + pb.getOffsetY(), 0);
     EXPECT_FALSE(pb.isSparse());
-    pb.clear();
+    pb.clear(false);
     EXPECT_EQ(pb.width_ + pb.height_, 0);
     EXPECT_FALSE(pb.valid());
 }
@@ -63,9 +64,10 @@ TEST(PixelBuffer, loadImgCrop) {
     EXPECT_EQ(pb.getOffsetX(), 1);
     EXPECT_EQ(pb.getOffsetY(), 0);
 
-    EXPECT_EQ(pb.data_[0], RGB(0, 255, 0));
-    EXPECT_EQ(pb.data_[1], RGB(0, 0, 255));
-    EXPECT_EQ(pb.data_[2], RGB(255, 255, 255));
+    pixel_t* data = pb.getData();
+    EXPECT_EQ(data[0], RGB(0, 255, 0));
+    EXPECT_EQ(data[1], RGB(0, 0, 255));
+    EXPECT_EQ(data[2], RGB(255, 255, 255));
 }
 
 TEST(PixelBuffer, loadImgCropLimits) {
