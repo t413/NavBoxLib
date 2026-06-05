@@ -5,6 +5,10 @@
 #include <cstring>
 #include <algorithm>
 
+#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
+#define BUF_HAS_PSRAM
+static bool bufUsePsram = psramFound();
+#endif
 
 PixelBuffer::~PixelBuffer() {
     clear(true);
@@ -20,6 +24,9 @@ bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord
     } else {
         clear(true); //free
         if (mempool_) data_ = (uint8_t*) mempool_->alloc(sizereq);
+#ifdef BUF_HAS_PSRAM
+        else if (bufUsePsram) data_ = (uint8_t*)ps_malloc(sizereq);
+#endif
         else data_ = (uint8_t*)malloc(sizereq);
         if (!data_) { return false; }
         datalen_ = sizereq;
@@ -33,7 +40,7 @@ bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord
 
 void PixelBuffer::clear(bool freemem) {
     if ((freemem || mempool_) && data_) {
-        if (!mempool_) free(data_);
+        if (!mempool_) free(data_); //free works on psram as well
         data_ = nullptr;
         datalen_ = 0;
     }
