@@ -8,6 +8,7 @@ typedef uint16_t pixel_t;
 #define GET_BLUE(color) (((color) & 0x001F) << 3)
 #define RGB(r, g, b) (uint16_t)((((r) & 0xF8) << 8) + (((g) & 0xFC) << 3) + (((b) & 0xF8) >> 3))
 struct Bounds;
+struct MemPool;
 
 /// PixelBuffer, generic buffer to hold image data with optional sparse mode.
 class PixelBuffer {
@@ -16,6 +17,7 @@ public:
     ~PixelBuffer();
 
     bool allocate(coord_t width, coord_t height, coord_t offsetX = 0, coord_t offsetY = 0);
+    void setMemPool(MemPool*);
     void clear(bool freemem);
     void drawPixelAbs(coord_t x, coord_t y, pixel_t value);
     pixel_t* getPixelPtrAbs(coord_t x, coord_t y);
@@ -34,6 +36,7 @@ public:
 
     coord_t uncroppedW_ = 0, uncroppedH_ = 0;
     coord_t width_ = 0, height_ = 0;
+    MemPool* mempool_ = nullptr;
 
 protected:
     uint8_t* data_ = nullptr; // RGB565 data for LVGL compatibility
@@ -44,4 +47,14 @@ protected:
 struct Bounds {
     coord_t left = 0, top = 0, right = 0, bttm = 0;
     operator bool() const { return left || top || right || bttm; }
+};
+
+struct MemPool {
+    uint8_t* buf_ = nullptr;
+    uint32_t bufsize_ = 0;
+    uint32_t bufpos_ = 0;
+    virtual void init(uint32_t size);
+    virtual void deinit();
+    virtual uint8_t* alloc(uint32_t size);
+    virtual void reset();
 };

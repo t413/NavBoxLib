@@ -10,6 +10,8 @@ PixelBuffer::~PixelBuffer() {
     clear(true);
 }
 
+void PixelBuffer::setMemPool(MemPool* pool) { clear(true); mempool_ = pool; }
+
 bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord_t offsetY) {
     uint32_t sizereq = width * height * sizeof(pixel_t);
     if (sizereq < datalen_ && data_) {
@@ -17,7 +19,8 @@ bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord
         MAP_LOG("pxl:alloc reusing %d (have %d)", sizereq, datalen_);
     } else {
         clear(true); //free
-        data_ = (uint8_t*)malloc(sizereq);
+        if (mempool_) data_ = (uint8_t*) mempool_->alloc(sizereq);
+        else data_ = (uint8_t*)malloc(sizereq);
         if (!data_) { return false; }
         datalen_ = sizereq;
     }
@@ -29,8 +32,8 @@ bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord
 }
 
 void PixelBuffer::clear(bool freemem) {
-    if (freemem && data_) {
-        free(data_);
+    if ((freemem || mempool_) && data_) {
+        if (!mempool_) free(data_);
         data_ = nullptr;
         datalen_ = 0;
     }
@@ -132,10 +135,11 @@ bool PixelBuffer::loadImg(const char* path, const Bounds &b) {
     }
 
     if (!allocate(aw, ah, ctx.b.left, ctx.b.top)) {
-        MAP_LOG("pxl::load failed, OOM (free: %d)", freeHeap());
+        MAP_LOG("pxl::load [%dx%d] failed, OOM (free: %d)", aw, ah, freeHeap());
         _png.close();
         return false;
     }
+    MAP_LOG("pxl::load alloc OK %dx%d = %d%%full", aw, ah, mempool_? mempool_->bufpos_ * 100 / mempool_->bufsize_ : -1);
 
     uncroppedW_ = fw, uncroppedH_ = fh;
     int rc = _png.decode(&ctx, 0);
@@ -149,4 +153,31 @@ bool PixelBuffer::loadImg(const char* path, const Bounds &b) {
 
     // MAP_LOG("pxl::load %s finished (free: %d) [%dx%d] offset: (%d,%d)", path, freeHeap(), width_, height_, offsetX_, offsetY_);
     return true;
+}
+
+
+void MemPool::init(uint32_t size) {
+    deinit();
+    if ((buf_ = (uint8_t*)malloc(size))) {
+        bufsize_ = size;
+        bufpos_ = 0;
+    }
+}
+void MemPool::deinit() {
+    if (buf_) free(buf_);
+    buf_ = nullptr;
+    bufsize_ = bufpos_ = 0;
+}
+uint8_t* MemPool::alloc(uint32_t size) {
+    if (!buf_ || (bufpos_ + size > bufsize_)) {
+        MAP_LOG("mempool::alloc OOM, want %d have %d", size, bufsize_ - bufpos_);
+        return nullptr;
+    }
+    uint8_t* ret = buf_ + bufpos_;
+    bufpos_ += size;
+    return ret;
+}
+void MemPool::reset() {
+    MAP_LOG("mempool::reset (was %d)", bufpos_);
+    bufpos_ = 0;
 }

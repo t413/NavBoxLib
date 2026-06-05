@@ -91,6 +91,7 @@ void MapRenderer::invalidate() {
         MAP_LOG("cropmode enabled, clearing tile cache on recenter");
         for (auto& t : cache_)
             t.clear();
+        mempool_.reset();
     }
     _updateTiles();
 }
@@ -194,6 +195,11 @@ void MapRenderer::_updateLayers() {
 
 void MapRenderer::_updateTiles() {
     if (!obj_) return;
+    if (cropmode_ && !mempool_.buf_) { //runs the first time, or after being unloaded
+        mempool_.init(width_ * height_ * sizeof(pixel_t) + 2048); // a little extra
+        for (auto& t : cache_) t.buffer.setMemPool(&mempool_);
+        MAP_LOG("tiles cropmode mempool allocated %d bytes (%dx%d)", mempool_.bufsize_, width_, height_);
+    }
 
     const uint16_t sts = scaledTileSize(); // effective on-screen pixels per tile
     double tx, ty;
