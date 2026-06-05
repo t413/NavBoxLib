@@ -33,7 +33,6 @@ bool TrackLog::load(const char* path) {
     clear();
     MAP_LOG("track: load %s", path);
     strncpy(currentPath_, path, sizeof(currentPath_)); //save opened path
-    clear();
     char line[128];
     isLoading_ = true;
     uint16_t totallines = 0;
