@@ -1,72 +1,40 @@
-#ifndef LV_CONF_H
+#pragma once
 #define LV_CONF_H
 
-#include <stdint.h>
+#define LV_COLOR_DEPTH          16
+#define LV_DPI_DEF              130
 
-#define LV_COLOR_DEPTH 16
-#define LV_COLOR_16_SWAP 0
+#define LV_DRAW_BUF_STRIDE_ALIGN  4
+#define LV_DRAW_BUF_ALIGN         4
 
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_BUILTIN
-#define LV_USE_STDLIB_STRING    LV_STDLIB_BUILTIN
-#define LV_USE_STDLIB_SPRINTF   LV_STDLIB_BUILTIN
+#define LV_USE_LOG                1
+#define LV_LOG_LEVEL              LV_LOG_LEVEL_INFO
+#define LV_LOG_PRINTF             1
 
-#if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
-    #define LV_MEM_SIZE (96 * 1024U)
-    #define LV_MEM_POOL_EXPAND_SIZE 0
-    #define LV_MEM_ADR 0
-#endif
+#define LV_USE_PERF_MONITOR       0
 
-#define LV_DEF_REFR_PERIOD  33
-#define LV_DPI_DEF 130
+#define LV_USE_DRAW_SW            1
+#define LV_DRAW_SW_SUPPORT_RGB565 1
 
-#define LV_USE_DRAW_SW 1
-#define LV_DRAW_SW_SUPPORT_RGB565       1
-#define LV_DRAW_SW_SUPPORT_RGB565_SWAPPED 1
-#define LV_DRAW_SW_COMPLEX              1
+// Fonts
+#define LV_FONT_MONTSERRAT_10     1
+#define LV_FONT_MONTSERRAT_12     1
+#define LV_FONT_MONTSERRAT_14     1
+#define LV_FONT_MONTSERRAT_16     1
+#define LV_FONT_MONTSERRAT_18     1
+#define LV_FONT_MONTSERRAT_20     1
+#define LV_FONT_MONTSERRAT_24     1
+#define LV_FONT_MONTSERRAT_28     1
 
-#define LV_USE_LOG 1
-#define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+// Input
+#define LV_USE_KEYBOARD           1
+#define LV_USE_POINTER            1
 
-#define LV_USE_ASSERT_NULL          1
-#define LV_USE_ASSERT_MALLOC        1
-#define LV_USE_ASSERT_STYLE         0
-#define LV_USE_ASSERT_MEM_INTEGRITY 0
-#define LV_USE_ASSERT_OBJ           0
+// Layout
+#define LV_USE_FLEX               1
+#define LV_USE_GRID               1
+#define LV_USE_ANIMATION          1
+#define LV_USE_SNAPSHOT           1
 
-#define LV_ENABLE_GLOBAL_CUSTOM 0
-#define LV_CACHE_DEF_SIZE       0
-#define LV_IMAGE_HEADER_CACHE_DEF_CNT 0
-#define LV_GRADIENT_MAX_STOPS   2
-#define LV_COLOR_MIX_ROUND_OFS  0
-#define LV_OBJ_STYLE_CACHE      0
-#define LV_USE_OBJ_ID           0
-#define LV_USE_OBJ_NAME         0
-#define LV_OBJ_ID_AUTO_ASSIGN   LV_USE_OBJ_ID
-#define LV_USE_OBJ_ID_BUILTIN   1
-#define LV_USE_OBJ_PROPERTY 0
-#define LV_USE_OBJ_PROPERTY_NAME 1
-#define LV_USE_GESTURE_RECOGNITION 0
-
-#define LV_FONT_MONTSERRAT_10 1
-#define LV_FONT_MONTSERRAT_12 1
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_DEFAULT &lv_font_montserrat_12
-
-#define LV_WIDGETS_HAS_DEFAULT_VALUE  1
-#define LV_USE_IMAGE      1
-#define LV_USE_LABEL      1
-#define LV_USE_LINE       1
-#define LV_USE_LIST       1
-
-#define LV_USE_THEME_DEFAULT 1
-#if LV_USE_THEME_DEFAULT
-    #define LV_THEME_DEFAULT_DARK 1
-    #define LV_THEME_DEFAULT_GROW 1
-    #define LV_THEME_DEFAULT_TRANSITION_TIME 80
-#endif
-
-#define LV_USE_FLEX 1
-
-#define LV_USE_OBSERVER 1
-
-#endif /* LV_CONF_H */
+#define LV_USE_STDLIB_MALLOC      LV_STDLIB_BUILTIN
+#define LV_MEM_SIZE               (1024U * 1024U)

@@ -18,6 +18,8 @@ Like Leaflet or google maps web view, but for microcontrollers!
 - Supports zooming past available tiles with magnification zoom
 - Platform and framework independent, runs on ESP32, desktops, etc
 - Unit testable and unit tested, this repo is also runnable as a platformio project that runs unit tests
+- Now for LVGL 9+! For 8.x.x compatibility see the [lvgl8](https://github.com/t413/NavBoxLib/tree/lvgl8) branch.
+- _Not vibecoded._ Proudly extensively and meticulously developed and tested by a human.
 
 ## Library Installation
 

@@ -20,7 +20,7 @@
   "frameworks": "*",
   "platforms": "*",
   "dependencies": {
-    "lvgl/lvgl": "^8.4.0",
+    "lvgl/lvgl": ">=9.0.0",
     "bitbank2/PNGdec": "^1.0.3"
   }
 }

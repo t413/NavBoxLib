@@ -163,6 +163,6 @@ void TrackLayer::update() {
         }
     }
 
-    lv_line_set_points(line, lvPoints, pointCount);
+    lv_line_set_points_mutable(line, lvPoints, (uint32_t)pointCount);
     lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
 }

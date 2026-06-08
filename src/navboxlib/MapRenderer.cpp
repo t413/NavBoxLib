@@ -10,12 +10,10 @@ const PixelBuffer* MapRenderer::TileCacheEntry::load(int ox, int oy, int oz, con
     snprintf(path, sizeof(path), fmt, oz, ox, oy);
     if (buffer.loadImg(path, bounds)) {
         z = oz, x = ox, y = oy, onscreen = 0;
-        dsc_.header.always_zero = 0;
-        dsc_.header.w = buffer.width_;
-        dsc_.header.h = buffer.height_;
-        dsc_.data_size = buffer.width_ * buffer.height_ * sizeof(uint16_t);
-        dsc_.header.cf = LV_IMG_CF_TRUE_COLOR;
-        dsc_.data = (const uint8_t*)buffer.getData();
+        lv_draw_buf_init(
+            &dsc_, buffer.width_, buffer.height_, LV_COLOR_FORMAT_RGB565, LV_STRIDE_AUTO,
+            (void*)buffer.getData(), buffer.width_ * buffer.height_ * sizeof(uint16_t)
+        );
         return &buffer;
     } else MAP_LOG("tile::load failed loading %s (free: %u)", path, freeHeap());
     return nullptr;

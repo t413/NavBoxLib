@@ -2,12 +2,11 @@
 
 #include <stdint.h>
 #include <vector>
-#include <src/draw/lv_img_buf.h>
+#include <lvgl.h>
 #include <algorithm>
 #include "GeoPoint.h"
 #include "PixelBuffer.h"
 
-struct _lv_obj_t;
 class MapRenderer;
 constexpr double DEFAULT_LAT = 37.8044;
 constexpr double DEFAULT_LON = -122.2712;
@@ -28,8 +27,8 @@ public:
     struct TileCacheEntry {
         int z = -1, x = -1, y = -1;
         PixelBuffer buffer;
-        lv_img_dsc_t dsc_{};
-        _lv_obj_t* img_obj = nullptr;
+        lv_draw_buf_t dsc_{};
+        lv_obj_t* img_obj = nullptr;
         int onscreen = 0; //set while iterating over tiles
         bool is(int ox, int oy, int oz) const { return ox == x && oy == y && oz == z; }
         const PixelBuffer* load(int ox, int oy, int oz, const char* fmt, const Bounds &);
@@ -41,7 +40,7 @@ public:
     MapRenderer() = default;
     ~MapRenderer();
 
-    bool begin(_lv_obj_t* parent, uint16_t w, uint16_t h, const char* fmt, uint16_t tileSize = 256);
+    bool begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fmt, uint16_t tileSize = 256);
     void setXY(uint16_t x, uint16_t y);
     void invalidate();
 
@@ -68,9 +67,10 @@ public:
     void addLayer(MapLayer* layer);
     void removeLayer(MapLayer* layer);
     MarkerLayer* getMarkerLayer();
+    const std::vector<MapLayer*>& getLayers() const { return layers_; }
 
 protected:
-    _lv_obj_t* obj_ = nullptr;
+    lv_obj_t* obj_ = nullptr;
     int16_t x_ = 0, y_ = 0;
     uint16_t width_ = 0, height_ = 0;
     uint16_t       tileSize_;
@@ -98,7 +98,7 @@ public: //utility methods, helpful to unit test
     int _findSlot();
     void _updateTiles();
     void _updateLayers();
-    _lv_obj_t* getLvglBase() const { return obj_; }
+    lv_obj_t* getLvglBase() const { return obj_; }
 };
 
 int freeHeap();

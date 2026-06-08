@@ -1,12 +1,11 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
-#include <misc/lv_area.h>
+#include <lvgl.h>
 #include "GeoPoint.h"
 
 class MapRenderer;
 class TrackLog;
-struct _lv_obj_t;
 
 class MapLayer {
 public:
@@ -25,7 +24,7 @@ struct Marker {
 
 class MarkerLayer : public MapLayer {
 private:
-    struct MarkObj { Marker m_; uint16_t id; _lv_obj_t* obj_; };
+    struct MarkObj { Marker m_; uint16_t id; lv_obj_t* obj_; };
     MapRenderer* map_;
     std::vector<MarkObj> markers_;
     uint16_t count_ = 1337;
@@ -50,8 +49,8 @@ class TrackLayer : public MapLayer {
 private:
     MapRenderer* map_ = nullptr;
     TrackLog* track_ = nullptr;
-    _lv_obj_t* line = nullptr;
-    lv_point_t lvPoints[25];
+    lv_obj_t* line = nullptr;
+    lv_point_precise_t lvPoints[25];
     uint16_t pointCount = 0;
     bool visible_ = true;
 public:

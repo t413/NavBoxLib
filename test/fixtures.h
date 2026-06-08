@@ -12,7 +12,7 @@ std::string testname();
 std::string cwd();
 void printfile(const char* fn);
 
-void draw_lvgl_png(lv_disp_drv_t* drv, const char* path);
+bool draw_lvgl_png(lv_display_t* drv, const char* path);
 
 // A minimal 4x4 rainbow png. starts with r, g, b, w, then more rainbow for the rest.
 extern const std::vector<uint8_t> png4x4;
@@ -27,9 +27,7 @@ struct TmpFileHelper {
 
 struct LvglTestEnv {
     std::vector<lv_color_t> buf_;
-    lv_disp_drv_t disp_drv_;
-    lv_disp_draw_buf_t draw_buf_;
-    lv_disp_t* disp_ = nullptr;
+    lv_display_t* disp_ = nullptr;
     lv_obj_t* base_ = nullptr;
     uint16_t width_ = 0, height_ = 0;
 
@@ -39,7 +37,7 @@ struct LvglTestEnv {
 
     void draw();
     std::filesystem::path outdir() const;
-    void save(std::string suffix="_canvas");
+    bool save(std::string suffix="_canvas");
     void clearfiles();
 };
 
