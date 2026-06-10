@@ -8,7 +8,6 @@
 
 #if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
 #define BUF_HAS_PSRAM
-static bool bufUsePsram = psramFound();
 #endif
 
 PixelBuffer::~PixelBuffer() {
@@ -26,7 +25,10 @@ bool PixelBuffer::allocate(coord_t width, coord_t height, coord_t offsetX, coord
         clear(true); //free
         if (mempool_) data_ = (uint8_t*) mempool_->alloc(sizereq);
 #ifdef BUF_HAS_PSRAM
-        else if (bufUsePsram) data_ = (uint8_t*)ps_malloc(sizereq);
+        else if (psramFound()) {
+            data_ = (uint8_t*)ps_malloc(sizereq);
+            MAP_LOG("pxl:alloc PSRAM %d, free %d", sizereq, ESP.getFreePsram());
+        }
 #endif
         else data_ = (uint8_t*)malloc(sizereq);
         if (!data_) { return false; }
@@ -241,7 +243,10 @@ constexpr uint16_t LUT_MISSING = UINT16_MAX;
 pixel_t PixelBuffer::_smartInvert(pixel_t color, float satBoost) {
     if (!_darkMode444Lut) {
         #ifdef BUF_HAS_PSRAM
-        _darkMode444Lut = bufUsePsram? (uint16_t*)ps_malloc(sizeof(uint16_t) * (LUT_MAX_SIZE + 1)) : nullptr;
+        if (psramFound()) {
+            _darkMode444Lut = (uint16_t*)ps_malloc(sizeof(uint16_t) * (LUT_MAX_SIZE + 1));
+            MAP_LOG("pxl made PSRAM invert LUT size %d", LUT_MAX_SIZE);
+        }
         #else
         _darkMode444Lut = new uint16_t[LUT_MAX_SIZE + 1]();
         #endif
