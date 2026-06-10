@@ -54,6 +54,7 @@ public:
     XY getMarkerPx(uint16_t id) const;
     int16_t getPxDistToCenter(const XY &) const;
     void setSmartInvert(bool smartInvert);
+    bool getInverted() const { return smartInvert_; }
 
     zoom_t zoom() const { return zoom_; }
     zoom_t zoomtotal() const { return zoom_ + magnification_ - 1; }

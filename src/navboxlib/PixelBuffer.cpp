@@ -181,6 +181,13 @@ pixel_t PixelBuffer::_rgb8ToRgb565(uint8_t r, uint8_t g, uint8_t b) {
     return (r5 << 11) | (g6 << 5) | b5;
 }
 
+uint16_t PixelBuffer::_rgb565ToRgb444(uint16_t c) {
+    uint16_t r = (c >> 12) & 0x0F;
+    uint16_t g = (c >> 7)  & 0x0F;
+    uint16_t b = (c >> 1)  & 0x0F;
+    return (r << 8) | (g << 4) | b;
+}
+
 PixelBuffer::HSL PixelBuffer::_rgbToHsl(uint8_t r, uint8_t g, uint8_t b) {
     float rf = r / 255.0f;
     float gf = g / 255.0f;
@@ -227,15 +234,22 @@ void PixelBuffer::_hslToRgb(const HSL& hsl, uint8_t& r, uint8_t& g, uint8_t& b) 
     b = static_cast<uint8_t>(std::round((b1 + m) * 255.0f));
 }
 
-uint16_t* _darkModeLut = nullptr;
+uint16_t* _darkMode444Lut = nullptr;
+constexpr uint16_t LUT_MAX_SIZE = (1 << 12); //2^12 for 12-bit RGB444 color
 constexpr uint16_t LUT_MISSING = UINT16_MAX;
 
 pixel_t PixelBuffer::_smartInvert(pixel_t color, float satBoost) {
-    if (!_darkModeLut) {
-        _darkModeLut = new uint16_t[UINT16_MAX + 1]();
-        std::memset(_darkModeLut, LUT_MISSING, (UINT16_MAX + 1) * sizeof(uint16_t));
+    if (!_darkMode444Lut) {
+        #ifdef BUF_HAS_PSRAM
+        _darkMode444Lut = bufUsePsram? (uint16_t*)ps_malloc(sizeof(uint16_t) * (LUT_MAX_SIZE + 1)) : nullptr;
+        #else
+        _darkMode444Lut = new uint16_t[LUT_MAX_SIZE + 1]();
+        #endif
+        if (_darkMode444Lut)
+            std::memset(_darkMode444Lut, LUT_MISSING, sizeof(uint16_t) * (LUT_MAX_SIZE + 1));
     }
-    if (_darkModeLut[color] != LUT_MISSING) return _darkModeLut[color]; //try LUT first
+    auto c444 = _rgb565ToRgb444(color);
+    if (_darkMode444Lut && _darkMode444Lut[c444] != LUT_MISSING) return _darkMode444Lut[c444]; //try LUT first
 
     uint8_t r, g, b;
     _rgb565ToRgb8(color, r, g, b);
@@ -246,8 +260,10 @@ pixel_t PixelBuffer::_smartInvert(pixel_t color, float satBoost) {
     _hslToRgb(hsl, r, g, b);
 
     pixel_t res = _rgb8ToRgb565(r, g, b);
-    if (res == LUT_MISSING) res = (LUT_MISSING - 1);
-    return (_darkModeLut[color] = res);
+    if (_darkMode444Lut) { //add to the cache
+        _darkMode444Lut[c444] = (res == LUT_MISSING)? LUT_MISSING - 1 : res;
+    }
+    return res;
 }
 
 void PixelBuffer::doInvert(bool smartInvert, float satBoost) {
@@ -263,10 +279,10 @@ void PixelBuffer::doInvert(bool smartInvert, float satBoost) {
         }
     }
     isInverted_ = true;
-    if (_darkModeLut) {
+    if (_darkMode444Lut) {
         uint32_t lutCount = 0;
         for (uint32_t i = 0; i <= UINT16_MAX; i++)
-            if (_darkModeLut[i] != LUT_MISSING) lutCount++;
+            if (_darkMode444Lut[i] != LUT_MISSING) lutCount++;
         float coverage = (lutCount * 100.0f) / (UINT16_MAX + 1);
         MAP_LOG("pixel: invert [%dx%d] (LUT coverage: %.2f%%)", width_, height_, coverage);
     }

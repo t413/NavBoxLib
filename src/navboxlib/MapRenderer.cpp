@@ -184,9 +184,11 @@ int16_t MapRenderer::getPxDistToCenter(const MapRenderer::XY &pos) const {
 void MapRenderer::setSmartInvert(bool smartInvert) {
     smartInvert_ = smartInvert;
     MAP_LOG("setSmartInvert %d", smartInvert);
-    for (auto& t : cache_)
-        if (t.buffer.isInverted() != smartInvert)
+    for (auto& t : cache_) {
+        if (smartInvert)
             t.buffer.doInvert(smartInvert);
+        else t.clear(); //reload fresh
+    }
 }
 
 

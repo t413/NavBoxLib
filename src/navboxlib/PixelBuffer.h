@@ -38,6 +38,7 @@ public:
     struct HSL { float h, s, l; };  // h: [0, 360], s: [0, 1], v: [0, 1]
     static void _rgb565ToRgb8(pixel_t color, uint8_t& r, uint8_t& g, uint8_t& b);
     static pixel_t _rgb8ToRgb565(uint8_t r, uint8_t g, uint8_t b);
+    static pixel_t _rgb565ToRgb444(pixel_t c);
     static HSL _rgbToHsl(uint8_t r, uint8_t g, uint8_t b);
     static void _hslToRgb(const HSL& hsv, uint8_t& r, uint8_t& g, uint8_t& b);
     static pixel_t _smartInvert(pixel_t rgb, float satBoost = 1.2f);
