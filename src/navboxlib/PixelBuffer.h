@@ -7,6 +7,7 @@ typedef uint16_t pixel_t;
 #define GET_GREEN(color) (((color) & 0x07E0) >> 3)
 #define GET_BLUE(color) (((color) & 0x001F) << 3)
 #define RGB(r, g, b) (uint16_t)((((r) & 0xF8) << 8) + (((g) & 0xFC) << 3) + (((b) & 0xF8) >> 3))
+
 struct Bounds;
 struct MemPool;
 
@@ -34,6 +35,16 @@ public:
     int getOffsetY() const { return offsetY_; }
     bool isSparse() const { return offsetX_ != 0 || offsetY_ != 0; }
 
+    struct HSL { float h, s, l; };  // h: [0, 360], s: [0, 1], v: [0, 1]
+    static void _rgb565ToRgb8(pixel_t color, uint8_t& r, uint8_t& g, uint8_t& b);
+    static pixel_t _rgb8ToRgb565(uint8_t r, uint8_t g, uint8_t b);
+    static HSL _rgbToHsl(uint8_t r, uint8_t g, uint8_t b);
+    static void _hslToRgb(const HSL& hsv, uint8_t& r, uint8_t& g, uint8_t& b);
+    static pixel_t _smartInvert(pixel_t rgb, float satBoost = 1.2f);
+
+    void doInvert(bool smartInvert = true, float satBoost = 1.2f);
+    bool isInverted() const { return isInverted_; }
+
     coord_t uncroppedW_ = 0, uncroppedH_ = 0;
     coord_t width_ = 0, height_ = 0;
     MemPool* mempool_ = nullptr;
@@ -42,6 +53,7 @@ protected:
     uint8_t* data_ = nullptr; // RGB565 data for LVGL compatibility
     uint32_t datalen_ = 0;
     int offsetX_, offsetY_;  // Offset within original image for sparse buffers
+    bool isInverted_ = false;
 };
 
 struct Bounds {

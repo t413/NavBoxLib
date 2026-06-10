@@ -4,6 +4,7 @@
 #include <PNGdec.h>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 #if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
 #define BUF_HAS_PSRAM
@@ -46,6 +47,7 @@ void PixelBuffer::clear(bool freemem) {
     }
     width_ = height_ = 0;
     offsetX_ = offsetY_ = 0;
+    isInverted_ = false;
 }
 
 void PixelBuffer::drawPixelAbs(coord_t x, coord_t y, pixel_t value) {
@@ -162,6 +164,113 @@ bool PixelBuffer::loadImg(const char* path, const Bounds &b) {
     return true;
 }
 
+void PixelBuffer::_rgb565ToRgb8(pixel_t color, uint8_t& r, uint8_t& g, uint8_t& b) {
+    uint8_t r5 = (color >> 11) & 0x1F;      // 5 bits
+    uint8_t g6 = (color >> 5) & 0x3F;       // 6 bits
+    uint8_t b5 = color & 0x1F;              // 5 bits
+    // Scale to 0-255 (replicate MSBs into LSBs for better accuracy)
+    r = (r5 << 3) | (r5 >> 2);              // r5 * 255/31 ≈ r5 << 3 + r5 >> 2
+    g = (g6 << 2) | (g6 >> 4);              // g6 * 255/63 ≈ g6 << 2 + g6 >> 4
+    b = (b5 << 3) | (b5 >> 2);              // b5 * 255/31 ≈ b5 << 3 + b5 >> 2
+}
+
+pixel_t PixelBuffer::_rgb8ToRgb565(uint8_t r, uint8_t g, uint8_t b) {
+    uint16_t r5 = (r >> 3) & 0x1F;
+    uint16_t g6 = (g >> 2) & 0x3F;
+    uint16_t b5 = (b >> 3) & 0x1F;
+    return (r5 << 11) | (g6 << 5) | b5;
+}
+
+PixelBuffer::HSL PixelBuffer::_rgbToHsl(uint8_t r, uint8_t g, uint8_t b) {
+    float rf = r / 255.0f;
+    float gf = g / 255.0f;
+    float bf = b / 255.0f;
+    float maxv = std::max({rf, gf, bf});
+    float minv = std::min({rf, gf, bf});
+    float delta = maxv - minv;
+    PixelBuffer::HSL hsl{};
+    hsl.l = (maxv + minv) * 0.5f;
+    if (delta < 0.00001f) {
+        hsl.h = 0.0f;
+        hsl.s = 0.0f;
+        return hsl;
+    }
+    hsl.s = delta / (1.0f - std::fabs(2.0f * hsl.l - 1.0f));
+    if (maxv == rf) {
+        hsl.h = 60.0f * std::fmod(((gf - bf) / delta), 6.0f);
+    } else if (maxv == gf) {
+        hsl.h = 60.0f * (((bf - rf) / delta) + 2.0f);
+    } else {
+        hsl.h = 60.0f * (((rf - gf) / delta) + 4.0f);
+    }
+    if (hsl.h < 0.0f)
+        hsl.h += 360.0f;
+    return hsl;
+}
+
+void PixelBuffer::_hslToRgb(const HSL& hsl, uint8_t& r, uint8_t& g, uint8_t& b) {
+    float c = (1.0f - std::fabs(2.0f * hsl.l - 1.0f)) * hsl.s;
+    float hp = hsl.h / 60.0f;
+    float x = c * (1.0f - std::fabs(std::fmod(hp, 2.0f) - 1.0f));
+    float r1 = 0.0f;
+    float g1 = 0.0f;
+    float b1 = 0.0f;
+    if (hp >= 0.0f && hp < 1.0f) { r1 = c; g1 = x; }
+    else if (hp < 2.0f) { r1 = x; g1 = c; }
+    else if (hp < 3.0f) { g1 = c; b1 = x; }
+    else if (hp < 4.0f) { g1 = x; b1 = c; }
+    else if (hp < 5.0f) { r1 = x; b1 = c; }
+    else { r1 = c; b1 = x; }
+    float m = hsl.l - c * 0.5f;
+    r = static_cast<uint8_t>(std::round((r1 + m) * 255.0f));
+    g = static_cast<uint8_t>(std::round((g1 + m) * 255.0f));
+    b = static_cast<uint8_t>(std::round((b1 + m) * 255.0f));
+}
+
+uint16_t* _darkModeLut = nullptr;
+constexpr uint16_t LUT_MISSING = UINT16_MAX;
+
+pixel_t PixelBuffer::_smartInvert(pixel_t color, float satBoost) {
+    if (!_darkModeLut) {
+        _darkModeLut = new uint16_t[UINT16_MAX + 1]();
+        std::memset(_darkModeLut, LUT_MISSING, (UINT16_MAX + 1) * sizeof(uint16_t));
+    }
+    if (_darkModeLut[color] != LUT_MISSING) return _darkModeLut[color]; //try LUT first
+
+    uint8_t r, g, b;
+    _rgb565ToRgb8(color, r, g, b);
+    auto hsl = _rgbToHsl(r, g, b);
+    hsl.l = 1.0f - hsl.l;  // Invert brightness, keep hue + saturation
+    hsl.s *= satBoost;  // Boost saturation
+    if (hsl.s > 1.0f) hsl.s = 1.0f;
+    _hslToRgb(hsl, r, g, b);
+
+    pixel_t res = _rgb8ToRgb565(r, g, b);
+    if (res == LUT_MISSING) res = (LUT_MISSING - 1);
+    return (_darkModeLut[color] = res);
+}
+
+void PixelBuffer::doInvert(bool smartInvert, float satBoost) {
+    if (!valid()) return;
+    pixel_t* pData = (pixel_t*)data_;
+    for (size_t i = 0; i < width_ * height_; i++) {
+        auto& p = pData[i];
+        if (smartInvert) p = _smartInvert(p, satBoost);
+        else {
+            uint8_t r, g, b;
+            _rgb565ToRgb8(p, r, g, b);
+            p = _rgb8ToRgb565(255 - r, 255 - g, 255 - b);
+        }
+    }
+    isInverted_ = true;
+    if (_darkModeLut) {
+        uint32_t lutCount = 0;
+        for (uint32_t i = 0; i <= UINT16_MAX; i++)
+            if (_darkModeLut[i] != LUT_MISSING) lutCount++;
+        float coverage = (lutCount * 100.0f) / (UINT16_MAX + 1);
+        MAP_LOG("pixel: invert [%dx%d] (LUT coverage: %.2f%%)", width_, height_, coverage);
+    }
+}
 
 void MemPool::init(uint32_t size) {
     deinit();

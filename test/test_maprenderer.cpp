@@ -101,6 +101,7 @@ TEST(MapRenderer, PanLogic) {
 TEST(MapRenderer, RealMapPositionRender) {
     fixtures::LvglTestEnv env(300, 200);
     MapRenderer map;
+    map.setSmartInvert(true);
     // map.cropmode_ = true;
     auto absPath = filesystem::absolute(OSM_TILES_STASH);
     MAP_LOG("OSM_TILES_STASH: %s", absPath.c_str());

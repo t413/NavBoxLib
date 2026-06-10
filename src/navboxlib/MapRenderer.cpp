@@ -181,6 +181,13 @@ int16_t MapRenderer::getPxDistToCenter(const MapRenderer::XY &pos) const {
     int16_t dy = pos.y - (int16_t)(height_ / 2);
     return (int16_t)sqrt(dx * dx + dy * dy);
 }
+void MapRenderer::setSmartInvert(bool smartInvert) {
+    smartInvert_ = smartInvert;
+    MAP_LOG("setSmartInvert %d", smartInvert);
+    for (auto& t : cache_)
+        if (t.buffer.isInverted() != smartInvert)
+            t.buffer.doInvert(smartInvert);
+}
 
 
 // Private update methods
@@ -261,6 +268,8 @@ void MapRenderer::_updateTiles() {
             }
 
             if (tile.load(m.x, m.y, zoom_, pathPattern_, crop)) {
+                if (smartInvert_ && !tile.buffer.isInverted())
+                    tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
                 tile.update(m.tx, m.ty, true, magnification_);
             } else {

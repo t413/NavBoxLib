@@ -53,6 +53,7 @@ public:
     void panPx(int16_t dx, int16_t dy);
     XY getMarkerPx(uint16_t id) const;
     int16_t getPxDistToCenter(const XY &) const;
+    void setSmartInvert(bool smartInvert);
 
     zoom_t zoom() const { return zoom_; }
     zoom_t zoomtotal() const { return zoom_ + magnification_ - 1; }
@@ -81,6 +82,7 @@ protected:
     std::vector<MapLayer*> layers_;
     MarkerLayer* markerLayer_ = nullptr;
     GeoPoint mapCenter_ = {DEFAULT_LAT, DEFAULT_LON};
+    bool smartInvert_ = false;
 
 public: //settings
     uint32_t colBg_ = 0x640d5c; // #640d5c
