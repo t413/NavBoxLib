@@ -29,10 +29,11 @@ public:
         PixelBuffer buffer;
         lv_draw_buf_t dsc_{};
         lv_obj_t* img_obj = nullptr;
-        int onscreen = 0; //set while iterating over tiles
+        bool onscreen = false; //set while iterating over tiles
+        uint32_t lastUsed = 0;
         bool is(int ox, int oy, int oz) const { return ox == x && oy == y && oz == z; }
         const PixelBuffer* load(int ox, int oy, int oz, const char* fmt, const Bounds &);
-        void update(int px, int py, bool visible, int8_t magnification = 1);
+        void update(int px, int py, bool visible, int8_t magnification = 1, uint32_t redrawIdx = 0);
         void clear();
     };
     struct XY { int16_t x, y; };
@@ -80,13 +81,14 @@ protected:
     zoom_t         zoom_ = 12;
     zoom_t         magnification_ = 1;
     TileCacheEntry cache_[TILECACHE_SIZE];
+    uint32_t redrawIdx_ = 0;
     std::vector<MapLayer*> layers_;
     MarkerLayer* markerLayer_ = nullptr;
     GeoPoint mapCenter_ = {DEFAULT_LAT, DEFAULT_LON};
     bool smartInvert_ = false;
 
 public: //settings
-    uint32_t colBg_ = 0x640d5c; // #640d5c
+    uint32_t colBg_ = 0x280b24; // #280b24
     uint32_t colAccent_ = 0x24b9d7;
     uint32_t colHome_ = 0x2ECC71; // #2ECC71
     bool cropmode_ = false;

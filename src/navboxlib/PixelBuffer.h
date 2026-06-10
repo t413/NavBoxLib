@@ -41,9 +41,9 @@ public:
     static pixel_t _rgb565ToRgb444(pixel_t c);
     static HSL _rgbToHsl(uint8_t r, uint8_t g, uint8_t b);
     static void _hslToRgb(const HSL& hsv, uint8_t& r, uint8_t& g, uint8_t& b);
-    static pixel_t _smartInvert(pixel_t rgb, float satBoost = 1.2f);
+    static pixel_t _smartInvert(pixel_t rgb, float satBoost = 0.8f);
 
-    void doInvert(bool smartInvert = true, float satBoost = 1.2f);
+    void doInvert(bool smartInvert = true, float satBoost = 0.8f);
     bool isInverted() const { return isInverted_; }
 
     coord_t uncroppedW_ = 0, uncroppedH_ = 0;

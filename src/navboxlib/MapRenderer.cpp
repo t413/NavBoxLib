@@ -19,7 +19,7 @@ const PixelBuffer* MapRenderer::TileCacheEntry::load(int ox, int oy, int oz, con
     return nullptr;
 }
 
-void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t magnification) {
+void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t magnification, uint32_t redrawIdx) {
     if (visible) {
         lv_coord_t adjustedX = px + (lv_coord_t)(buffer.getOffsetX() * magnification);
         lv_coord_t adjustedY = py + (lv_coord_t)(buffer.getOffsetY() * magnification);
@@ -31,6 +31,7 @@ void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t ma
         lv_obj_add_flag(img_obj, LV_OBJ_FLAG_HIDDEN);
     }
     onscreen = visible;
+    lastUsed = onscreen? redrawIdx : 0;
 }
 
 void MapRenderer::TileCacheEntry::clear() {
@@ -208,6 +209,8 @@ void MapRenderer::_updateTiles() {
         MAP_LOG("tiles cropmode mempool allocated %d bytes (%dx%d)", mempool_.bufsize_, width_, height_);
     }
 
+    const auto start = millis();
+    int updated = 0, loaded = 0;
     const uint16_t sts = scaledTileSize(); // effective on-screen pixels per tile
     double tx, ty;
     _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, tx, ty);
@@ -224,7 +227,7 @@ void MapRenderer::_updateTiles() {
     const int rows = (int)ceil((double)height_ / sts) + 1;
     const int gridSize = cols * rows;
 
-    for (int j = 0; j < TILECACHE_SIZE; j++) cache_[j].onscreen = 0; //reset all
+    for (int j = 0; j < TILECACHE_SIZE; j++) cache_[j].onscreen = false; //reset all
     struct TileSlot { int x,y; int tx,ty; };
     TileSlot missing[TILECACHE_SIZE] = {0};
     uint8_t missingIdx = 0;
@@ -247,7 +250,8 @@ void MapRenderer::_updateTiles() {
 
             int idx = _findTile(gx, gy, zoom_);
             if (idx != -1) {
-                cache_[idx].update(tpx, tpy, true, magnification_);
+                cache_[idx].update(tpx, tpy, true, magnification_, redrawIdx_);
+                updated++;
             } else {
                 missing[missingIdx++] = { gx, gy, tpx, tpy };
             }
@@ -273,17 +277,20 @@ void MapRenderer::_updateTiles() {
                 if (smartInvert_ && !tile.buffer.isInverted())
                     tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
-                tile.update(m.tx, m.ty, true, magnification_);
+                tile.update(m.tx, m.ty, true, magnification_, redrawIdx_);
+                loaded++;
             } else {
                 tile.z = -1;
             }
-        }
+        } else MAP_LOG("ERROR: no empty tile slots!");
     }
 
     for (int j = 0; j < TILECACHE_SIZE; j++)
         if (!cache_[j].onscreen)
             cache_[j].update(0, 0, false);
 
+    MAP_LOG("tiledraw[%d] l %d u %d in %d", redrawIdx_, loaded, updated, millis() - start);
+    redrawIdx_++;
     _updateLayers();
 }
 
@@ -318,10 +325,15 @@ int MapRenderer::_findTile(int x, int y, int z) {
 }
 
 int MapRenderer::_findSlot() {
-    for (int j = 0; j < TILECACHE_SIZE; j++)
-        if (!cache_[j].onscreen)
-            return j;
-    return -1;
+    int ret = -1;
+    uint32_t minLastUsed = UINT32_MAX;
+    for (int j = 0; j < TILECACHE_SIZE; j++) {
+        if (!cache_[j].onscreen && cache_[j].lastUsed < minLastUsed) {
+            minLastUsed = cache_[j].lastUsed;
+            ret = j;
+        }
+    }
+    return ret;
 }
 int freeHeap() {
     #ifdef ARDUINO
