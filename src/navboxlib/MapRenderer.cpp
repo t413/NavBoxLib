@@ -19,14 +19,15 @@ const PixelBuffer* MapRenderer::TileCacheEntry::load(int ox, int oy, int oz, con
     return nullptr;
 }
 
-void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t magnification, uint32_t redrawIdx) {
+void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t scale, uint32_t redrawIdx) {
     if (visible) {
-        lv_coord_t adjustedX = px + (lv_coord_t)(buffer.getOffsetX() * magnification);
-        lv_coord_t adjustedY = py + (lv_coord_t)(buffer.getOffsetY() * magnification);
+        lv_coord_t adjustedX = px + (lv_coord_t)(buffer.getOffsetX() * scale);
+        lv_coord_t adjustedY = py + (lv_coord_t)(buffer.getOffsetY() * scale);
         lv_img_set_pivot(img_obj, 0, 0);
-        lv_img_set_zoom(img_obj, (uint16_t)(magnification * buffer.uncroppedW_)); //TODO allow fractional zoom
+        lv_img_set_zoom(img_obj, (uint16_t)(scale * buffer.uncroppedW_)); //TODO allow fractional zoom
         lv_obj_set_pos(img_obj, adjustedX, adjustedY);
         lv_obj_clear_flag(img_obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_to_index(img_obj, lv_obj_get_index(img_obj) - 1); //forground
     } else {
         lv_obj_add_flag(img_obj, LV_OBJ_FLAG_HIDDEN);
     }
@@ -109,7 +110,7 @@ uint8_t MapRenderer::iterate(uint32_t now, bool loadAll) {
 }
 
 bool MapRenderer::project(double lat, double lon, lv_coord_t& px, lv_coord_t& py) const {
-    const uint16_t sts = scaledTileSize();
+    const auto sts = scaledTileSize(zoom_);
     double tx, ty, cx, cy;
     _latLonToTileF(lat, lon, zoom_, tx, ty);
     _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx, cy);
@@ -128,16 +129,8 @@ void MapRenderer::setCenter(const GeoPoint& p, zoom_t zoom) {
     invalidate();
 }
 
-void MapRenderer::setZoom(zoom_t zoom, zoom_t magnification) {
-    if (magnification == MAGNF_AUTO) {
-        zoom_ = findBestZoomWithTiles(mapCenter_, zoom);
-        magnification = zoom - zoom_ + 1;
-        zoom = zoom_;
-    }
-    if (zoom != ZOOM_UNCHANGED)
-        zoom_          = (zoom > 20) ? 20 : zoom;
-    magnification_ = (magnification < 1) ? 1 : magnification;
-    MAP_LOG("setZoom z%d mag%d (scaledTile=%d)", zoom_, magnification_, scaledTileSize());
+void MapRenderer::setZoom(zoom_t zoom) {
+    zoom_ = (zoom > 20) ? 20 : zoom;
     invalidate();
 }
 
@@ -155,8 +148,13 @@ zoom_t MapRenderer::findBestZoomWithTiles(const GeoPoint &cntr, zoom_t start) {
     return start;
 }
 
+zoom_t MapRenderer::scaledTileSize(zoom_t z) const {
+    if (z == zoom_) return tileSize_;
+    return (tileSize_ * powf(2.0f, z - zoom_));
+}
+
 void MapRenderer::panPx(int16_t dx, int16_t dy) {
-    const uint16_t sts   = scaledTileSize(); //already accounts for magnification
+    const auto sts = scaledTileSize(zoom_); //already accounts for magnification
     const double totalPx = (double)sts * pow(2.0, zoom_); // total world width in screen-pixels
     double ty = _latToTileY(mapCenter_.lat(), zoom_) + (double)dy / sts;
     setCenter({_tileYToLat(ty, zoom_), mapCenter_.lon() + dx / totalPx * 360.0});
@@ -246,7 +244,7 @@ MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom
     double tx, ty;
     _latLonToTileF(lat, lon, zoom, tx, ty);
     TileGridCtx ret = {
-        .sts = scaledTileSize(),
+        .sts = scaledTileSize(zoom),
         .nTiles = (int)pow(2.0, zoom_),
     };
     ret.tx_s = (int)floor(tx - (double)width_  / 2 / ret.sts);
@@ -260,14 +258,16 @@ MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom
 }
 
 MapRenderer::XY MapRenderer::_calcTileScreenPos(int tx, int ty, int tz) const {
-    if (tz != zoom_) // Tile is for wrong zoom level
-        return {INT16_MIN, INT16_MIN};
-    const uint16_t sts = scaledTileSize();
-    double cx, cy;
-    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx, cy);
+    double cx_display, cy_display;
+    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx_display, cy_display);
+    float zoomDiff = zoom_ - tz;
+    float scaleFactor = powf(2.0f, zoomDiff);
+    float tx_display = tx * scaleFactor;
+    float ty_display = ty * scaleFactor;
+    const auto sts = scaledTileSize(zoom_); //display zoom
     return {
-        .x = (int16_t)round((tx - cx) * sts + width_  / 2),
-        .y = (int16_t)round((ty - cy) * sts + height_ / 2),
+        .x = (int16_t)round((tx_display - cx_display) * sts + width_  / 2),
+        .y = (int16_t)round((ty_display - cy_display) * sts + height_ / 2),
     };
 }
 
@@ -282,32 +282,42 @@ uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, 
             const int gy = ctx.ty_s + row;
             if (gy < 0 || gy >= ctx.nTiles) continue;
 
-            const int tpx = ctx.px_s + col * (int)ctx.sts;
-            const int tpy = ctx.py_s + row * (int)ctx.sts;
-
+            XY dest = {
+                .x = (int16_t)(ctx.px_s + col * (int)ctx.sts),
+                .y = (int16_t)(ctx.py_s + row * (int)ctx.sts),
+            };
             // Skip tiles entirely outside the canvas
-            if (tpx + (int)ctx.sts <= 0 || tpx >= width_)  continue;
-            if (tpy + (int)ctx.sts <= 0 || tpy >= height_) continue;
+            if (dest.x + (int)ctx.sts <= 0 || dest.x >= width_)  continue;
+            if (dest.y + (int)ctx.sts <= 0 || dest.y >= height_) continue;
 
-            int idx = _findTile(gx, gy, zoom_);
+            int idx = _findTile(gx, gy, zoom_, true);
+            zoom_t scale = 1;
             if (idx != -1) {
-                cache_[idx].update(tpx, tpy, true, magnification_, redrawIdx_);
+                auto& tile = cache_[idx];
+                if (tile.z != zoom_) { //magnication needed!
+                    scale = powf(2.0f, zoom_ - tile.z);
+                    dest = _calcTileScreenPos(tile.x, tile.y, tile.z);
+                }
+                MAP_LOG("tile updating %d,%d,%d -> %d,%d scale %.2f", tile.x, tile.y, tile.z, dest.x, dest.y, scale);
+                tile.update(dest.x, dest.y, true, scale, redrawIdx_);
                 updated++;
-            } else if (allowQueue) {
-                _queueTileRequest(gx, gy, zoom_, now, tpx, tpy);
+            }
+            if (allowQueue && (idx == -1 || scale != 1)) {
+                _queueTileRequest(gx, gy, zoom_, now, dest);
             }
         }
     }
     return updated;
 }
 
-bool MapRenderer::_queueTileRequest(int x, int y, int z, uint32_t now, int16_t px, int16_t py) {
+bool MapRenderer::_queueTileRequest(int x, int y, int z, uint32_t now, MapRenderer::XY dest) {
     if (loadQueue_.size() >= TILECACHE_SIZE) return false;
     for (const auto& req : loadQueue_) {
         if (req.x == x && req.y == y && req.z == z)
             return false;
     }
-    TileLoadRequest req = {x, y, z, now, px, py};
+    if (z != zoom_) dest = {INT16_MIN, INT16_MIN};
+    TileLoadRequest req = {x, y, z, now, dest};
     loadQueue_.push_back(req);
     return true;
 }
@@ -321,9 +331,11 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
         auto& tile = cache_[newIdx];
         if (newIdx != -1) { // found empty slot
             auto& tile = cache_[newIdx];
-            XY dest = {m.tx, m.ty};
-            if (m.tx == INT16_MIN || m.ty == INT16_MIN || now != m.queuedAt) {
+            XY dest = m.dest;
+            zoom_t scale = 1; //default
+            if (dest.x == INT16_MIN || dest.y == INT16_MIN || now != m.queuedAt || m.z != zoom_) {
                 dest = _calcTileScreenPos(m.x, m.y, m.z); //update the tile position first!
+                scale = powf(2.0f, zoom_ - m.z);
             }
             if (dest.x == INT16_MIN || dest.y == INT16_MIN) {
                 MAP_LOG("tile deque bad pos %d,%d,%d -> %d,%d", m.x, m.y, m.z, dest.x, dest.y);
@@ -331,18 +343,19 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
             }
             Bounds crop;
             if (cropmode_) {
-                crop.left  = (coord_t)std::max(0, (int)(-m.tx / magnification_));
-                crop.top   = (coord_t)std::max(0, (int)(-m.ty / magnification_));
-                crop.right = (coord_t)std::min((int)tileSize_, (int)((width_  - m.tx) / magnification_));
-                crop.bttm  = (coord_t)std::min((int)tileSize_, (int)((height_ - m.ty) / magnification_));
+                crop.left  = (coord_t)std::max(0, (int)(-dest.x / scale));
+                crop.top   = (coord_t)std::max(0, (int)(-dest.y / scale));
+                crop.right = (coord_t)std::min((int)tileSize_, (int)((width_  - dest.x) / scale));
+                crop.bttm  = (coord_t)std::min((int)tileSize_, (int)((height_ - dest.y) / scale));
             }
 
-            if (tile.load(m.x, m.y, zoom_, pathPattern_, crop)) {
+            if (tile.load(m.x, m.y, m.z, pathPattern_, crop)) {
                 if (smartInvert_ && !tile.buffer.isInverted())
                     tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
-                if (m.tx != INT16_MIN && m.ty != INT16_MIN)
-                    tile.update(m.tx, m.ty, true, magnification_, redrawIdx_); //straight to screen
+                MAP_LOG("tile loaded %d,%d,%d -> %d,%d scale %.2f", m.x, m.y, m.z, dest.x, dest.y, scale);
+                if (dest.x != INT16_MIN && dest.y != INT16_MIN)
+                    tile.update(dest.x, dest.y, true, scale, redrawIdx_); //straight to screen
                 else tile.update(0, 0, false); //offscreen cache load
                 return true;
             } else MAP_LOG("ERROR loading tile %d,%d,%d", m.x, m.y, m.z);
@@ -375,9 +388,19 @@ double MapRenderer::_tileYToLat(double ty, int z) {
 
 // Cache helpers
 
-int MapRenderer::_findTile(int x, int y, int z) {
+int MapRenderer::_findTile(int x, int y, int z, bool allowback) {
     for (int i = 0; i < TILECACHE_SIZE; i++) {
         if (cache_[i].is(x, y, z)) return i;
+    }
+    if (allowback) {
+        // Look for a tile from one zoom level out that covers this area
+        int bz = z, bx = x, by = y;
+        int levels = 0;
+        while (bz > 0 && levels < 3) {
+            bz--; bx /= 2; by /= 2; levels++;
+            int idx = _findTile(bx, by, bz, false);
+            if (idx != -1) return idx;
+        }
     }
     return -1;
 }

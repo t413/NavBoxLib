@@ -11,9 +11,8 @@
 class MapRenderer;
 constexpr double DEFAULT_LAT = 37.8044;
 constexpr double DEFAULT_LON = -122.2712;
-typedef int8_t zoom_t;
+typedef float zoom_t;
 constexpr zoom_t ZOOM_UNCHANGED = -1;
-constexpr int8_t MAGNF_AUTO = -1;
 #ifndef TILECACHE_SIZE
 #define TILECACHE_SIZE 4
 #endif
@@ -34,11 +33,11 @@ public:
         uint32_t lastUsed = 0;
         bool is(int ox, int oy, int oz) const { return ox == x && oy == y && oz == z; }
         const PixelBuffer* load(int ox, int oy, int oz, const char* fmt, const Bounds &);
-        void update(int px, int py, bool visible, int8_t magnification = 1, uint32_t redrawIdx = 0);
+        void update(int px, int py, bool visible, zoom_t scale = 1, uint32_t redrawIdx = 0);
         void clear();
     };
-    struct TileLoadRequest { int x, y, z; uint32_t queuedAt; int16_t tx, ty;};
     struct XY { int16_t x, y; };
+    struct TileLoadRequest { int x, y, z; uint32_t queuedAt; XY dest; };
 
     MapRenderer() = default;
     ~MapRenderer();
@@ -53,7 +52,7 @@ public:
     zoom_t findBestZoomWithTiles(const GeoPoint &, zoom_t);
 
     void setCenter(const GeoPoint &, zoom_t zoom = ZOOM_UNCHANGED); ///Sets the map's center view
-    void setZoom(zoom_t zoom, zoom_t magnification = MAGNF_AUTO);
+    void setZoom(zoom_t zoom);
     void panPx(int16_t dx, int16_t dy);
     XY getMarkerPx(uint16_t id) const;
     int16_t getPxDistToCenter(const XY &) const;
@@ -61,9 +60,8 @@ public:
     bool getInverted() const { return smartInvert_; }
 
     zoom_t zoom() const { return zoom_; }
-    zoom_t zoomtotal() const { return zoom_ + magnification_ - 1; }
-    zoom_t magnification() const { return magnification_; }
-    uint16_t scaledTileSize() const { return tileSize_ * magnification_; }
+    zoom_t zoomtotal() const { return zoom_; }
+    zoom_t scaledTileSize(zoom_t z) const;
     double lat() const { return mapCenter_.lat(); }
     double lon() const { return mapCenter_.lon(); }
     const GeoPoint& getCenter() const { return mapCenter_; }
@@ -82,7 +80,6 @@ protected:
     uint16_t       tileSize_;
     const char*    pathPattern_ = nullptr;
     zoom_t         zoom_ = 12;
-    zoom_t         magnification_ = 1;
     std::vector<TileCacheEntry> cache_;
     std::deque<TileLoadRequest> loadQueue_;
     uint32_t redrawIdx_ = 0;
@@ -103,7 +100,7 @@ public: //utility methods, helpful to unit test
     static void _latLonToTileF(double lat, double lon, int z, double& tx, double& ty);
     static double _latToTileY(double lat, int z);
     static double _tileYToLat(double ty, int z);
-    int _findTile(int x, int y, int z);
+    int _findTile(int x, int y, int z, bool allowback);
     int _findSlot();
     XY _calcTileScreenPos(int tx, int ty, int tz) const;
     void _updateTiles(uint32_t now, bool blockingload = false);
@@ -111,12 +108,12 @@ public: //utility methods, helpful to unit test
     lv_obj_t* getLvglBase() const { return obj_; }
 
     struct TileGridCtx {
-        int sts, cols, rows, tx_s, ty_s, px_s, py_s, nTiles;
+        zoom_t sts; int cols, rows, tx_s, ty_s, px_s, py_s, nTiles;
     };
 
     TileGridCtx _calcTileGrid(double lat, double lon, zoom_t zoom) const;
     uint8_t _updateAndQueueTiles(const TileGridCtx&, uint32_t now, bool allowQueue=true);
-    bool _queueTileRequest(int x, int y, int z, uint32_t now, int16_t tx=INT16_MIN, int16_t ty=INT16_MIN);
+    bool _queueTileRequest(int x, int y, int z, uint32_t now, MapRenderer::XY dest);
     bool _loadOneQueuedTile(uint32_t now);  // called from iterate(), loads 1 tile with timeout
 
 };
