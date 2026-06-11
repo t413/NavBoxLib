@@ -11,14 +11,17 @@ Like Leaflet or google maps web view, but for microcontrollers!
 </p>
 
 - Ultra effecient, works on non-PSRAM micros with minimal RAM
+- Dark Mode! Smart color-preserving inverted luminescence, highly optimized for speed and efficiency.
+- Smooth zoom support. Scales map tiles for smooth continuous zoom ability, not one huge step at a time like most engines.
 - Overlays for custom map elements
 - Markers support for marking/updating points on the map
 - GPX file reading & writing for path loading/viewing/saving
 - Track simplification engine
 - Supports zooming past available tiles with magnification zoom
+- Ultra high performance, tiles loaded from storage in background or piecewise.
 - Platform and framework independent, runs on ESP32, desktops, etc
 - Unit testable and unit tested, this repo is also runnable as a platformio project that runs unit tests
-- Now for LVGL 9+! For 8.x.x compatibility see the [lvgl8](https://github.com/t413/NavBoxLib/tree/lvgl8) branch.
+- Now for LVGL 9+ AND LVGL 8.x.x, both!
 - _Not vibecoded._ Proudly extensively and meticulously developed and tested by a human.
 
 ## Library Installation
@@ -40,7 +43,7 @@ NavBoxLib: Without PSRAM it only stores *visible* portions of tiles. **~80–180
 
 This is the primary backbone of my [NavBox](https://github.com/t413/NavBoxESP) offline GPS firmware for the ESP32. Check out that project for a full example!
 
-[Unit tests](https://github.com/t413/navboxlib/tree/main/test) each demo realistic uses of each compodent and parts working together, check them out!
+[Unit tests](https://github.com/t413/navboxlib/tree/main/test) each demo realistic uses of each component and parts working together, check them out!
 
 ```cpp
 #include <navboxlib/MapRenderer.h>

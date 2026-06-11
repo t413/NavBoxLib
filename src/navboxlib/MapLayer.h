@@ -50,7 +50,7 @@ private:
     MapRenderer* map_ = nullptr;
     TrackLog* track_ = nullptr;
     lv_obj_t* line = nullptr;
-    lv_point_precise_t lvPoints[25];
+    lv_point_t lvPoints[25];
     uint16_t pointCount = 0;
     bool visible_ = true;
 public:

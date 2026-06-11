@@ -17,6 +17,10 @@ constexpr zoom_t ZOOM_UNCHANGED = -1;
 #define TILECACHE_SIZE 4
 #endif
 
+#if LV_VERSION_CHECK(9, 0, 0) == 0
+typedef lv_img_dsc_t lv_draw_buf_t;
+#endif
+
 class MapLayer;
 struct Marker;
 class MarkerLayer;
