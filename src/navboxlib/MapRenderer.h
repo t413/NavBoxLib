@@ -105,6 +105,7 @@ public: //utility methods, helpful to unit test
     static double _tileYToLat(double ty, int z);
     int _findTile(int x, int y, int z);
     int _findSlot();
+    XY _calcTileScreenPos(int tx, int ty, int tz) const;
     void _updateTiles(uint32_t now, bool blockingload = false);
     void _updateLayers();
     lv_obj_t* getLvglBase() const { return obj_; }

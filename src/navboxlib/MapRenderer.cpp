@@ -103,7 +103,8 @@ uint8_t MapRenderer::iterate(uint32_t now, bool loadAll) {
         loaded++;
         if (!loadAll) break;
     }
-    MAP_LOG("map queue blocking-loaded %d tiles", loaded);
+    if (loaded)
+        MAP_LOG("map queue blocking-loaded %d tiles", loaded);
     return loaded;
 }
 
@@ -202,6 +203,7 @@ void MapRenderer::setSmartInvert(bool smartInvert) {
             t.buffer.doInvert(smartInvert);
         else t.clear(); //reload fresh
     }
+    if (!smartInvert) invalidate(); //trigger reload
 }
 
 
@@ -257,6 +259,18 @@ MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom
     return ret;
 }
 
+MapRenderer::XY MapRenderer::_calcTileScreenPos(int tx, int ty, int tz) const {
+    if (tz != zoom_) // Tile is for wrong zoom level
+        return {INT16_MIN, INT16_MIN};
+    const uint16_t sts = scaledTileSize();
+    double cx, cy;
+    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx, cy);
+    return {
+        .x = (int16_t)round((tx - cx) * sts + width_  / 2),
+        .y = (int16_t)round((ty - cy) * sts + height_ / 2),
+    };
+}
+
 uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, bool allowQueue) {
     // Collect missing tiles into loadQueue_ of TileLoadRequest
     uint8_t updated = 0;
@@ -289,7 +303,10 @@ uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, 
 
 bool MapRenderer::_queueTileRequest(int x, int y, int z, uint32_t now, int16_t px, int16_t py) {
     if (loadQueue_.size() >= TILECACHE_SIZE) return false;
-    //TODO check for duplicates
+    for (const auto& req : loadQueue_) {
+        if (req.x == x && req.y == y && req.z == z)
+            return false;
+    }
     TileLoadRequest req = {x, y, z, now, px, py};
     loadQueue_.push_back(req);
     return true;
@@ -304,6 +321,14 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
         auto& tile = cache_[newIdx];
         if (newIdx != -1) { // found empty slot
             auto& tile = cache_[newIdx];
+            XY dest = {m.tx, m.ty};
+            if (m.tx == INT16_MIN || m.ty == INT16_MIN || now != m.queuedAt) {
+                dest = _calcTileScreenPos(m.x, m.y, m.z); //update the tile position first!
+            }
+            if (dest.x == INT16_MIN || dest.y == INT16_MIN) {
+                MAP_LOG("tile deque bad pos %d,%d,%d -> %d,%d", m.x, m.y, m.z, dest.x, dest.y);
+                return false;
+            }
             Bounds crop;
             if (cropmode_) {
                 crop.left  = (coord_t)std::max(0, (int)(-m.tx / magnification_));
