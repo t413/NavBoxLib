@@ -49,8 +49,9 @@ MapRenderer::~MapRenderer() {
         delete layer;
         layer = nullptr;
     }
-    if (obj_) lv_obj_del(obj_);  // Parent container
-    obj_ = nullptr;
+    if (base_) lv_obj_del(base_);
+    if (tilesBase_) lv_obj_del(tilesBase_);
+    base_ = tilesBase_ = nullptr;
 }
 
 bool MapRenderer::begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fmt, uint16_t tileSize) {
@@ -66,26 +67,29 @@ bool MapRenderer::begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fm
     if (!parent) {
         return false;
     }
-    obj_ = lv_obj_create(parent);
-    lv_obj_set_size(obj_, width_, height_);
-    lv_obj_set_pos(obj_, x_, y_);
-    lv_obj_set_style_pad_all(obj_, 0, 0);
-    lv_obj_set_style_border_width(obj_, 0, 0);
-    lv_obj_set_style_radius(obj_, 0, 0);
-    lv_obj_set_scrollbar_mode(obj_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_bg_color(obj_, lv_color_hex(colBg_), 0);
+    base_ = lv_obj_create(parent);
+    tilesBase_ = lv_obj_create(base_);
+    for (auto obj : {base_, tilesBase_}) {
+        lv_obj_set_size(obj, width_, height_);
+        lv_obj_set_pos(obj, x_, y_);
+        lv_obj_set_style_pad_all(obj, 0, 0);
+        lv_obj_set_style_border_width(obj, 0, 0);
+        lv_obj_set_style_radius(obj, 0, 0);
+        lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+    }
+    lv_obj_set_style_bg_color(base_, lv_color_hex(colBg_), 0);
 
     // Create fixed image objects for the 2x2 grid
     cache_.resize(TILECACHE_SIZE);
     for (auto& t : cache_) {
         if (t.img_obj) continue;
-        t.img_obj = lv_img_create(obj_);
+        t.img_obj = lv_img_create(tilesBase_);
         t.update(0, 0, false); //hide
     }
     return true;
 }
 
-void MapRenderer::setXY(uint16_t x, uint16_t y) { lv_obj_set_pos(obj_, (x_ = x), (y_ = y)); }
+void MapRenderer::setXY(uint16_t x, uint16_t y) { lv_obj_set_pos(base_, (x_ = x), (y_ = y)); }
 
 void MapRenderer::invalidate() {
     if (cropmode_) { //invalidate cache first
@@ -110,7 +114,7 @@ uint8_t MapRenderer::iterate(uint32_t now, bool loadAll) {
 }
 
 bool MapRenderer::project(double lat, double lon, lv_coord_t& px, lv_coord_t& py) const {
-    const auto sts = scaledTileSize(zoom_);
+    const auto sts = scaledTileSize();
     double tx, ty, cx, cy;
     _latLonToTileF(lat, lon, zoom_, tx, ty);
     _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx, cy);
@@ -130,14 +134,15 @@ void MapRenderer::setCenter(const GeoPoint& p, zoom_t zoom) {
 }
 
 void MapRenderer::setZoom(zoom_t zoom) {
-    zoom_ = (zoom > 20) ? 20 : zoom;
+    zoom_ = std::fmin(std::fmax(0.0, zoom), 20.0);
+    MAP_LOG("setZoom %0.1f", zoom_);
     invalidate();
 }
 
-zoom_t MapRenderer::findBestZoomWithTiles(const GeoPoint &cntr, zoom_t start) {
+int MapRenderer::findBestZoomWithTiles(const GeoPoint &cntr, int start) {
     //zoom out until finding tiles for this zoom level
     char path[128];
-    for (zoom_t z = start; z > 0; z--) {
+    for (int z = start; z > 0; z--) {
         double tx, ty;
         _latLonToTileF(cntr.lat(), cntr.lon(), z, tx, ty);
         snprintf(path, sizeof(path), pathPattern_, z, (int)tx, (int)ty);
@@ -145,16 +150,14 @@ zoom_t MapRenderer::findBestZoomWithTiles(const GeoPoint &cntr, zoom_t start) {
         MAP_LOG("find zoom %s -> %d", path, has);
         if (has) { return z; } //found
     }
-    return start;
+    return 0;
 }
 
-zoom_t MapRenderer::scaledTileSize(zoom_t z) const {
-    if (z == zoom_) return tileSize_;
-    return (tileSize_ * powf(2.0f, z - zoom_));
-}
+zoom_t MapRenderer::scaledTileSize()      const { return scaledTileSize(floor(zoom_)); }
+zoom_t MapRenderer::scaledTileSize(int z) const { return (tileSize_ * powf(2.0f, zoom_ - z)); }
 
 void MapRenderer::panPx(int16_t dx, int16_t dy) {
-    const auto sts = scaledTileSize(zoom_); //already accounts for magnification
+    const auto sts = scaledTileSize(); //already accounts for magnification
     const double totalPx = (double)sts * pow(2.0, zoom_); // total world width in screen-pixels
     double ty = _latToTileY(mapCenter_.lat(), zoom_) + (double)dy / sts;
     setCenter({_tileYToLat(ty, zoom_), mapCenter_.lon() + dx / totalPx * 360.0});
@@ -214,7 +217,7 @@ void MapRenderer::_updateLayers() {
 }
 
 void MapRenderer::_updateTiles(uint32_t now, bool blockingload) {
-    if (!obj_) return;
+    if (!base_ || !tilesBase_) return;
     if (cropmode_ && !mempool_.buf_) { //runs the first time, or after being unloaded
         mempool_.init(width_ * height_ * sizeof(pixel_t) + 2048); // a little extra
         for (auto& t : cache_) t.buffer.setMemPool(&mempool_);
@@ -242,10 +245,11 @@ void MapRenderer::_updateTiles(uint32_t now, bool blockingload) {
 
 MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom_t zoom) const {
     double tx, ty;
-    _latLonToTileF(lat, lon, zoom, tx, ty);
+    int izoom = (int)floor(zoom);
+    _latLonToTileF(lat, lon, izoom, tx, ty);
     TileGridCtx ret = {
-        .sts = scaledTileSize(zoom),
-        .nTiles = (int)pow(2.0, zoom_),
+        .sts = scaledTileSize(izoom),
+        .nTiles = 1 << izoom,
     };
     ret.tx_s = (int)floor(tx - (double)width_  / 2 / ret.sts);
     ret.ty_s = (int)floor(ty - (double)height_ / 2 / ret.sts);
@@ -259,15 +263,11 @@ MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom
 
 MapRenderer::XY MapRenderer::_calcTileScreenPos(int tx, int ty, int tz) const {
     double cx_display, cy_display;
-    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, cx_display, cy_display);
-    float zoomDiff = zoom_ - tz;
-    float scaleFactor = powf(2.0f, zoomDiff);
-    float tx_display = tx * scaleFactor;
-    float ty_display = ty * scaleFactor;
-    const auto sts = scaledTileSize(zoom_); //display zoom
+    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), tz, cx_display, cy_display);
+    const auto sts = scaledTileSize(tz);
     return {
-        .x = (int16_t)round((tx_display - cx_display) * sts + width_  / 2),
-        .y = (int16_t)round((ty_display - cy_display) * sts + height_ / 2),
+        .x = (int16_t)round((tx - cx_display) * sts + width_  / 2.0),
+        .y = (int16_t)round((ty - cy_display) * sts + height_ / 2.0),
     };
 }
 
@@ -302,7 +302,7 @@ uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, 
                 tile.update(dest.x, dest.y, true, scale, redrawIdx_);
                 updated++;
             }
-            if (allowQueue && (idx == -1 || scale != 1)) {
+            if (allowQueue && (idx == -1 || floor(scale) != 1)) {
                 _queueTileRequest(gx, gy, zoom_, now, dest);
             }
         }
@@ -350,7 +350,7 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
             }
 
             if (tile.load(m.x, m.y, m.z, pathPattern_, crop)) {
-                if (smartInvert_ && !tile.buffer.isInverted())
+                if (smartInvert_ && !tile.buffer.isFiltered())
                     tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
                 MAP_LOG("tile loaded %d,%d,%d -> %d,%d scale %.2f", m.x, m.y, m.z, dest.x, dest.y, scale);
@@ -369,30 +369,34 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
 void MapRenderer::_mvForground(const TileCacheEntry& tile) {
     if (!tile.img_obj) return;
     int32_t max_idx = 0;
+    lv_obj_t* max_obj = nullptr;
     for (const auto& entry : cache_) {
-        if (entry.img_obj && entry.onscreen)
-            max_idx = std::max(max_idx, lv_obj_get_index(entry.img_obj));
+        if (entry.img_obj && !entry.onscreen && lv_obj_get_index(entry.img_obj) > max_idx) {
+            max_idx = lv_obj_get_index(entry.img_obj);
+            max_obj = entry.img_obj;
+        }
     }
-    lv_obj_move_to_index(tile.img_obj, max_idx);
+    // lv_obj_move_to_index(tile.img_obj, lv_obj_get_index(tile.img_obj) - 1);
+    if (max_obj) lv_obj_swap(tile.img_obj, max_obj);
 }
 
 // Static geo math
 
 void MapRenderer::_latLonToTileF(double lat, double lon, int z, double& tx, double& ty) {
-    double n = pow(2.0, z);
+    float n = (1 << z);
     tx = n * (lon + 180.0) / 360.0;
     double lrad = lat * DEG_2_RAD;
     ty = n * (1.0 - log(tan(lrad) + 1.0/cos(lrad)) / M_PI) / 2.0;
 }
 
 double MapRenderer::_latToTileY(double lat, int z) {
-    double n = pow(2.0, z);
+    float n = (1 << z);
     double lrad = lat * DEG_2_RAD;
     return n * (1.0 - log(tan(lrad) + 1.0/cos(lrad)) / M_PI) / 2.0;
 }
 
 double MapRenderer::_tileYToLat(double ty, int z) {
-    double n = pow(2.0, z);
+    float n = (1 << z);
     double sinh_val = sinh(M_PI * (1.0 - 2.0 * ty / n));
     return atan(sinh_val) / DEG_2_RAD;
 }

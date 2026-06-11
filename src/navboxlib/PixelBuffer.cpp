@@ -49,7 +49,7 @@ void PixelBuffer::clear(bool freemem) {
     }
     width_ = height_ = 0;
     offsetX_ = offsetY_ = 0;
-    isInverted_ = false;
+    isFiltered_ = false;
 }
 
 void PixelBuffer::drawPixelAbs(coord_t x, coord_t y, pixel_t value) {
@@ -283,14 +283,7 @@ void PixelBuffer::doInvert(bool smartInvert, float satBoost) {
             p = _rgb8ToRgb565(255 - r, 255 - g, 255 - b);
         }
     }
-    isInverted_ = true;
-    if (_darkMode444Lut) {
-        uint32_t lutCount = 0;
-        for (uint32_t i = 0; i <= UINT16_MAX; i++)
-            if (_darkMode444Lut[i] != LUT_MISSING) lutCount++;
-        float coverage = (lutCount * 100.0f) / (UINT16_MAX + 1);
-        MAP_LOG("pixel: invert [%dx%d] (LUT coverage: %.2f%%)", width_, height_, coverage);
-    }
+    isFiltered_ = true;
 }
 
 void MemPool::init(uint32_t size) {

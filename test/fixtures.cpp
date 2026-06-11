@@ -40,6 +40,11 @@ void printfile(const char* fn) {
     std::cout << content << std::endl;
 }
 
+int filesize(const char* fn) {
+    struct stat st;
+    return (stat(fn, &st) == 0)? st.st_size : -1;
+}
+
 bool draw_lvgl_png(lv_display_t* drv, const char* path) {
     if (!drv) return false;
     int w = lv_display_get_horizontal_resolution(drv);
@@ -87,9 +92,15 @@ const std::vector<uint8_t> png256hi = {
 
 TmpFileHelper::TmpFileHelper(const std::vector<uint8_t> &img, string fn) {
     fn_ = fn.empty()? fmtstr("/tmp/testpng_%d.png", img.size()) : fn;
+    std::filesystem::path p(fn_);
+    if (p.has_parent_path() && !std::filesystem::exists(p.parent_path())) {
+        std::filesystem::create_directories(p.parent_path());
+    }
     std::ofstream ofs(fn_, std::ios::binary);
     ofs.write((const char*) img.data(), img.size());
     ofs.close();
+    if (ofs.fail()) { MAP_LOG("TmpFileHelper ERROR: Failed to write to %s (check permissions/path)", fn_.c_str()); }
+    else { MAP_LOG("TmpFileHelper created %s, filesize %d", fn_.c_str(), filesize(fn_.c_str())); }
 }
 void TmpFileHelper::rm() { remove(fn_.c_str()); }
 

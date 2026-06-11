@@ -49,7 +49,7 @@ public:
 
     bool project(double lat, double lon, lv_coord_t& px, lv_coord_t& py) const; /// get display px position of a lat/lon point
     bool isVisible(lv_coord_t px, lv_coord_t py) const;
-    zoom_t findBestZoomWithTiles(const GeoPoint &, zoom_t);
+    int findBestZoomWithTiles(const GeoPoint &, int start = 20);
 
     void setCenter(const GeoPoint &, zoom_t zoom = ZOOM_UNCHANGED); ///Sets the map's center view
     void setZoom(zoom_t zoom);
@@ -61,7 +61,8 @@ public:
 
     zoom_t zoom() const { return zoom_; }
     zoom_t zoomtotal() const { return zoom_; }
-    zoom_t scaledTileSize(zoom_t z) const;
+    zoom_t scaledTileSize(int z) const;
+    zoom_t scaledTileSize() const;
     double lat() const { return mapCenter_.lat(); }
     double lon() const { return mapCenter_.lon(); }
     const GeoPoint& getCenter() const { return mapCenter_; }
@@ -74,7 +75,8 @@ public:
     const std::vector<MapLayer*>& getLayers() const { return layers_; }
 
 protected:
-    lv_obj_t* obj_ = nullptr;
+    lv_obj_t* base_ = nullptr;
+    lv_obj_t* tilesBase_ = nullptr;
     int16_t x_ = 0, y_ = 0;
     uint16_t width_ = 0, height_ = 0;
     uint16_t       tileSize_;
@@ -105,7 +107,7 @@ public: //utility methods, helpful to unit test
     XY _calcTileScreenPos(int tx, int ty, int tz) const;
     void _updateTiles(uint32_t now, bool blockingload = false);
     void _updateLayers();
-    lv_obj_t* getLvglBase() const { return obj_; }
+    lv_obj_t* getLvglBase() const { return base_; }
 
     struct TileGridCtx {
         zoom_t sts; int cols, rows, tx_s, ty_s, px_s, py_s, nTiles;

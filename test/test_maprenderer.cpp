@@ -4,6 +4,7 @@
 #include <navboxlib/MapRenderer.h>
 #include <navboxlib/MapLayer.h>
 #include <navboxlib/TrackLog.h>
+#include <navboxlib/fileclass.h>
 
 using namespace std;
 using namespace fixtures;
@@ -17,6 +18,17 @@ constexpr int TEST_X = 512;
 constexpr int TEST_Y = 512;
 
 std::filesystem::path OSM_TILES_STASH = "./tiles"; //TODO .. download tiles here?
+
+string getStashTilesPath() {
+    auto absPath = filesystem::absolute(OSM_TILES_STASH);
+    MAP_LOG("OSM_TILES_STASH: %s", absPath.c_str());
+    if (!filesystem::is_directory(absPath)) {
+        MAP_LOG("WARNING CAN'T RUN TEST WITHOUT TILES at %s", absPath.c_str());
+        return "";
+    }
+    return string(absPath) + TILE_FMT_END;
+}
+
 
 std::string tilePath(int z, int x, int y) {
     return fmtstr(TILE_FMT.c_str(), z, x, y);
@@ -54,6 +66,7 @@ TEST(MapRenderer, SetupAndProjection) {
     EXPECT_TRUE(ret);
 
     map.setCenter({0.0, 0.0}, TEST_Z);
+    map.iterate(millis(), true);
     env.draw(); //do a full lvgl render
 
     double tx = 0, ty = 0;
@@ -98,18 +111,23 @@ TEST(MapRenderer, PanLogic) {
     }
 }
 
+TEST(MapRenderer, findBestZoomWithTiles) {
+    MapRenderer map;
+    auto tfmt = getStashTilesPath();
+    EXPECT_FALSE(tfmt.empty());
+    map.begin(nullptr, 0, 0, tfmt.c_str());
+
+    auto zoom = map.findBestZoomWithTiles(TEST_CENTER, 30);
+    MAP_LOG("found findBestZoomWithTiles -> %d", (int)zoom);
+    EXPECT_GT(zoom, 0);
+}
+
 TEST(MapRenderer, RealMapPositionRender) {
     fixtures::LvglTestEnv env(300, 200);
     MapRenderer map;
     map.setSmartInvert(true);
-    // map.cropmode_ = true;
-    auto absPath = filesystem::absolute(OSM_TILES_STASH);
-    MAP_LOG("OSM_TILES_STASH: %s", absPath.c_str());
-    if (!filesystem::is_directory(absPath)) {
-        MAP_LOG("WARNING CAN'T RUN TEST WITHOUT TILES at %s", absPath.c_str());
-        return;
-    }
-    string tfmt = string(absPath) + TILE_FMT_END;
+    auto tfmt = getStashTilesPath();
+    EXPECT_FALSE(tfmt.empty());
     auto ret = map.begin(env.base_, env.width_, env.height_, tfmt.c_str());
     EXPECT_TRUE(ret);
 
@@ -119,32 +137,31 @@ TEST(MapRenderer, RealMapPositionRender) {
     auto dotidx  = mkrs->add(Marker(dotpos, 15));
     auto homeidx = mkrs->add(Marker(TEST_CENTER, 14, 0x00ff00, 'H' ));
     int saveidx = 0;
-    auto drawsave = [&env,&map,&saveidx](string extra="") {
+    auto drawsave = [&env,&map,&saveidx](bool iterate = false, string extra="") {
+        auto ret = iterate? map.iterate(millis(), true) : 0;
         env.draw(); //do a full lvgl render
-        env.save(fmtstr("_change%d-z%d-m%d", saveidx++, map.zoom(), map.magnification()) + extra);
+        env.save(fmtstr("_change%d-z%0.1f", saveidx++, map.zoom()) + extra);
+        return ret;
     };
-    drawsave();
+
+    auto zoom = map.findBestZoomWithTiles(TEST_CENTER, 30);
+    MAP_LOG("found findBestZoomWithTiles -> %d", (int)zoom);
 
     dotpos = TEST_CENTER.fromDistHeading(50, 300);
     map.getMarkerLayer()->updatePoint(dotidx, dotpos);
     map.setCenter(dotpos); //center map on dot
-    drawsave();
+    auto loaded = drawsave(true);
+    EXPECT_EQ(loaded, 4);
 
-    map.setZoom(15, 2); //zoomed out, maginified-in
-    drawsave();
-
-    map.setZoom(14, 3); //zoomed out, maginified-in
-    drawsave();
-
-    auto zoom = map.findBestZoomWithTiles(map.getCenter(), 30);
-    MAP_LOG("found findBestZoomWithTiles -> %d", zoom);
-
-    map.setZoom(20); //auto zoom!
-    drawsave("autozoom");
-
-    for (zoom_t z = 20; z > 5; z--) {
-        map.setZoom(z);
-        MAP_LOG("zoom z%d -> %d (%d)", z, map.zoom(), map.magnification());
+    map.setSmartInvert(false); //clears the cache as well
+    map.setZoom(14);
+    drawsave(true);
+    for (zoom_t z = 15; z <= 19; z++) {
+        map.setZoom(z); //zoom in, don't reload tiles
+        drawsave(false, "_zoomed");
+        drawsave(true, "_zoomed_loaded");
+        map.setZoom(map.zoom() + 0.5f);
+        drawsave(true, "_partial");
     }
     // exit(1);
 }
@@ -178,6 +195,7 @@ TEST(MapRenderer, TrackLayerCircle) {
     MAP_LOG("rec %d kept %d", track.recordedPoints_, (int) track.points().size());
 
     map.setCenter(center, 16);
+    map.iterate(millis(), true);
     env.draw();
     env.save("_trackcircle");
 

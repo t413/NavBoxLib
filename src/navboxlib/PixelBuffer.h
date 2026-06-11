@@ -44,7 +44,7 @@ public:
     static pixel_t _smartInvert(pixel_t rgb, float satBoost = 0.8f);
 
     void doInvert(bool smartInvert = true, float satBoost = 0.8f);
-    bool isInverted() const { return isInverted_; }
+    bool isFiltered() const { return isFiltered_; }
 
     coord_t uncroppedW_ = 0, uncroppedH_ = 0;
     coord_t width_ = 0, height_ = 0;
@@ -54,7 +54,7 @@ protected:
     uint8_t* data_ = nullptr; // RGB565 data for LVGL compatibility
     uint32_t datalen_ = 0;
     int offsetX_, offsetY_;  // Offset within original image for sparse buffers
-    bool isInverted_ = false;
+    bool isFiltered_ = false;
 };
 
 struct Bounds {
