@@ -115,6 +115,7 @@ public: //utility methods, helpful to unit test
     uint8_t _updateAndQueueTiles(const TileGridCtx&, uint32_t now, bool allowQueue=true);
     bool _queueTileRequest(int x, int y, int z, uint32_t now, MapRenderer::XY dest);
     bool _loadOneQueuedTile(uint32_t now);  // called from iterate(), loads 1 tile with timeout
+    void _mvForground(const TileCacheEntry& tile);
 
 };
 

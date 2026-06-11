@@ -324,8 +324,8 @@ bool MapRenderer::_queueTileRequest(int x, int y, int z, uint32_t now, MapRender
 
 bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
     if (!loadQueue_.empty()) {
-        const auto m = loadQueue_.front();
-        loadQueue_.pop_front();
+        const auto m = loadQueue_.back();
+        loadQueue_.pop_back();
 
         int newIdx = _findSlot();
         auto& tile = cache_[newIdx];
@@ -354,9 +354,11 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
                     tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
                 MAP_LOG("tile loaded %d,%d,%d -> %d,%d scale %.2f", m.x, m.y, m.z, dest.x, dest.y, scale);
-                if (dest.x != INT16_MIN && dest.y != INT16_MIN)
+                if (dest.x != INT16_MIN && dest.y != INT16_MIN) {
                     tile.update(dest.x, dest.y, true, scale, redrawIdx_); //straight to screen
-                else tile.update(0, 0, false); //offscreen cache load
+                    if (m.z == zoom_)
+                        _mvForground(tile);
+                } else tile.update(0, 0, false); //offscreen cache load
                 return true;
             } else MAP_LOG("ERROR loading tile %d,%d,%d", m.x, m.y, m.z);
         } else MAP_LOG("ERROR: no empty tile slots!");
@@ -364,6 +366,15 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
     return false;
 }
 
+void MapRenderer::_mvForground(const TileCacheEntry& tile) {
+    if (!tile.img_obj) return;
+    int32_t max_idx = 0;
+    for (const auto& entry : cache_) {
+        if (entry.img_obj && entry.onscreen)
+            max_idx = std::max(max_idx, lv_obj_get_index(entry.img_obj));
+    }
+    lv_obj_move_to_index(tile.img_obj, max_idx);
+}
 
 // Static geo math
 
