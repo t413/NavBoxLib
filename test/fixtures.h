@@ -3,8 +3,21 @@
 #include <vector>
 #include <lvgl.h>
 #include <filesystem>
+#include <navboxlib/GeoPoint.h>
 
 namespace fixtures {
+
+static const TrackPoint TEST_CENTER(37.87125, -122.31767);
+static const std::string TILE_FMT_END = "/%d/%d/%d.png";
+static const std::string TILE_FMT = "/tmp" + TILE_FMT_END;
+static constexpr int TEST_Z = 10;
+static constexpr int TEST_X = 512;
+static constexpr int TEST_Y = 512;
+extern const std::filesystem::path OSM_TILES_STASH;
+
+std::string getStashTilesPath();
+std::string tilePath(int z, int x, int y);
+
 
 std::string fmtstr(const char* fmt, ... );
 std::string basename(const std::string& path);
@@ -23,6 +36,18 @@ struct TmpFileHelper {
     TmpFileHelper(const std::vector<uint8_t> &img, std::string fn="");
     ~TmpFileHelper() { rm(); }
     void rm();
+};
+
+struct GifMaker {
+    GifMaker(const std::string& path, uint16_t w, uint16_t h);
+    ~GifMaker();
+    bool addFrame(lv_display_t* drv, int delayMs = 5);
+    void finish();
+
+private:
+    std::string path_;
+    uint16_t w_, h_;
+    void* state_ = nullptr;
 };
 
 struct LvglTestEnv {

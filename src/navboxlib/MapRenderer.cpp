@@ -237,7 +237,7 @@ void MapRenderer::_updateTiles(uint32_t now, bool blockingload) {
 
     if (blockingload) {
         iterate(now, true);
-    } else MAP_LOG("map queue has %d items", (int)loadQueue_.size());
+    } else if (!loadQueue_.empty()) { MAP_LOG("map queue has %d items", (int)loadQueue_.size()); }
 
     _updateLayers();
     redrawIdx_++;
@@ -298,7 +298,6 @@ uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, 
                     scale = powf(2.0f, zoom_ - tile.z);
                     dest = _calcTileScreenPos(tile.x, tile.y, tile.z);
                 }
-                MAP_LOG("tile updating %d,%d,%d -> %d,%d scale %.2f", tile.x, tile.y, tile.z, dest.x, dest.y, scale);
                 tile.update(dest.x, dest.y, true, scale, redrawIdx_);
                 updated++;
             }

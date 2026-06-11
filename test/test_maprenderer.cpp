@@ -9,30 +9,6 @@
 using namespace std;
 using namespace fixtures;
 
-static const TrackPoint TEST_CENTER(37.87125, -122.31767);
-
-const std::string TILE_FMT_END = "/%d/%d/%d.png";
-const std::string TILE_FMT = "/tmp" + TILE_FMT_END;
-constexpr int TEST_Z = 10;
-constexpr int TEST_X = 512;
-constexpr int TEST_Y = 512;
-
-std::filesystem::path OSM_TILES_STASH = "./tiles"; //TODO .. download tiles here?
-
-string getStashTilesPath() {
-    auto absPath = filesystem::absolute(OSM_TILES_STASH);
-    MAP_LOG("OSM_TILES_STASH: %s", absPath.c_str());
-    if (!filesystem::is_directory(absPath)) {
-        MAP_LOG("WARNING CAN'T RUN TEST WITHOUT TILES at %s", absPath.c_str());
-        return "";
-    }
-    return string(absPath) + TILE_FMT_END;
-}
-
-
-std::string tilePath(int z, int x, int y) {
-    return fmtstr(TILE_FMT.c_str(), z, x, y);
-}
 
 TEST(MapRenderer, latlonToTile) {
     double x,y;

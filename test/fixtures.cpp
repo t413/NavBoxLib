@@ -7,9 +7,27 @@
 #include <sys/stat.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#define MSF_GIF_IMPL
+#include "msf_gif.h"
 
 using namespace std;
 namespace fixtures {
+
+const std::filesystem::path OSM_TILES_STASH = "./tiles"; //TODO .. download tiles here?
+
+string getStashTilesPath() {
+    auto absPath = filesystem::absolute(OSM_TILES_STASH);
+    MAP_LOG("OSM_TILES_STASH: %s", absPath.c_str());
+    if (!filesystem::is_directory(absPath)) {
+        MAP_LOG("WARNING CAN'T RUN TEST WITHOUT TILES at %s", absPath.c_str());
+        return "";
+    }
+    return string(absPath) + TILE_FMT_END;
+}
+
+std::string tilePath(int z, int x, int y) {
+    return fmtstr(TILE_FMT.c_str(), z, x, y);
+}
 
 std::string fmtstr(const char* fmt, ... ) {
     char buf[128];
@@ -104,6 +122,47 @@ TmpFileHelper::TmpFileHelper(const std::vector<uint8_t> &img, string fn) {
 }
 void TmpFileHelper::rm() { remove(fn_.c_str()); }
 
+GifMaker::GifMaker(const std::string& path, uint16_t w, uint16_t h) : path_(path), w_(w), h_(h) {
+    state_ = new MsfGifState();
+    memset(state_, 0, sizeof(MsfGifState));
+    msf_gif_begin((MsfGifState*)state_, w, h);
+}
+
+GifMaker::~GifMaker() {
+    if (state_) {
+        delete (MsfGifState*)state_;
+    }
+}
+
+bool GifMaker::addFrame(lv_display_t* drv, int delayMs) {
+    if (!drv || !state_) return false;
+    auto active = lv_display_get_screen_active(drv);
+    auto snapshot = lv_snapshot_take(active, LV_COLOR_FORMAT_RGB888);
+    if (!snapshot) return false;
+
+    std::vector<uint8_t> rgba(w_ * h_ * 4);
+    for (int i = 0; i < w_ * h_; ++i) {
+        rgba[i * 4 + 0] = snapshot->data[i * 3 + 2]; // BGR -> RGB swap (per draw_lvgl_png)
+        rgba[i * 4 + 1] = snapshot->data[i * 3 + 1];
+        rgba[i * 4 + 2] = snapshot->data[i * 3 + 0];
+        rgba[i * 4 + 3] = 255;
+    }
+    msf_gif_frame((MsfGifState*)state_, rgba.data(), delayMs, 16, w_ * 4);
+    lv_draw_buf_destroy(snapshot);
+    return true;
+}
+
+void GifMaker::finish() {
+    if (!state_) return;
+    MsfGifResult result = msf_gif_end((MsfGifState*)state_);
+    if (result.data) {
+        std::ofstream ofs(path_, std::ios::binary);
+        ofs.write((const char*)result.data, result.dataSize);
+        ofs.close();
+        msf_gif_free(result);
+        MAP_LOG("GifMaker: saved animation to %s", path_.c_str());
+    }
+}
 
 LvglTestEnv::LvglTestEnv(uint16_t width, uint16_t height, bool clear) {
     reset(width, height);
