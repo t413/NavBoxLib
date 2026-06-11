@@ -75,10 +75,11 @@ bool MapRenderer::begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fm
     lv_obj_set_style_bg_color(obj_, lv_color_hex(colBg_), 0);
 
     // Create fixed image objects for the 2x2 grid
-    for (uint8_t i = 0; i < TILECACHE_SIZE; i++) {
-        cache_[i].img_obj = lv_img_create(obj_);
-        lv_img_set_pivot(cache_[i].img_obj, 0, 0);
-        lv_obj_add_flag(cache_[i].img_obj, LV_OBJ_FLAG_HIDDEN);
+    cache_.resize(TILECACHE_SIZE);
+    for (auto& t : cache_) {
+        if (t.img_obj) continue;
+        t.img_obj = lv_img_create(obj_);
+        t.update(0, 0, false); //hide
     }
     return true;
 }
@@ -92,7 +93,18 @@ void MapRenderer::invalidate() {
             t.clear();
         mempool_.reset();
     }
-    _updateTiles();
+    _updateTiles(millis(), cropmode_);
+}
+
+uint8_t MapRenderer::iterate(uint32_t now, bool loadAll) {
+    uint8_t loaded = 0;
+    while (!loadQueue_.empty()) {
+        bool ret = _loadOneQueuedTile(now);  // synchronous
+        loaded++;
+        if (!loadAll) break;
+    }
+    MAP_LOG("map queue blocking-loaded %d tiles", loaded);
+    return loaded;
 }
 
 bool MapRenderer::project(double lat, double lon, lv_coord_t& px, lv_coord_t& py) const {
@@ -201,7 +213,7 @@ void MapRenderer::_updateLayers() {
     }
 }
 
-void MapRenderer::_updateTiles() {
+void MapRenderer::_updateTiles(uint32_t now, bool blockingload) {
     if (!obj_) return;
     if (cropmode_ && !mempool_.buf_) { //runs the first time, or after being unloaded
         mempool_.init(width_ * height_ * sizeof(pixel_t) + 2048); // a little extra
@@ -209,60 +221,87 @@ void MapRenderer::_updateTiles() {
         MAP_LOG("tiles cropmode mempool allocated %d bytes (%dx%d)", mempool_.bufsize_, width_, height_);
     }
 
-    const auto start = millis();
-    int updated = 0, loaded = 0;
-    const uint16_t sts = scaledTileSize(); // effective on-screen pixels per tile
+    for (auto& t : cache_)
+        t.onscreen = false;
+
+    auto ctx = _calcTileGrid(mapCenter_.lat(), mapCenter_.lon(), zoom_);
+
+    auto updated = _updateAndQueueTiles(ctx, now, true); //queue
+
+    for (auto& t : cache_)
+        if (!t.onscreen)
+            t.update(0, 0, false); //hide offscreen tiles
+
+    if (blockingload) {
+        iterate(now, true);
+    } else MAP_LOG("map queue has %d items", (int)loadQueue_.size());
+
+    _updateLayers();
+    redrawIdx_++;
+}
+
+MapRenderer::TileGridCtx MapRenderer::_calcTileGrid(double lat, double lon, zoom_t zoom) const {
     double tx, ty;
-    _latLonToTileF(mapCenter_.lat(), mapCenter_.lon(), zoom_, tx, ty);
-    int nTiles = (int)pow(2.0, zoom_);
+    _latLonToTileF(lat, lon, zoom, tx, ty);
+    TileGridCtx ret = {
+        .sts = scaledTileSize(),
+        .nTiles = (int)pow(2.0, zoom_),
+    };
+    ret.tx_s = (int)floor(tx - (double)width_  / 2 / ret.sts);
+    ret.ty_s = (int)floor(ty - (double)height_ / 2 / ret.sts);
+    ret.px_s = (int)round((ret.tx_s - tx) * ret.sts + width_  / 2.0);
+    ret.py_s = (int)round((ret.ty_s - ty) * ret.sts + height_ / 2.0);
 
-    // Top-left tile index and its pixel origin on screen
-    const int tx_s = (int)floor(tx - (double)width_  / 2 / sts);
-    const int ty_s = (int)floor(ty - (double)height_ / 2 / sts);
-    const int px_s = (int)round((tx_s - tx) * sts + width_  / 2.0);
-    const int py_s = (int)round((ty_s - ty) * sts + height_ / 2.0);
+    ret.cols = (int)ceil((double)width_  / ret.sts) + 1;
+    ret.rows = (int)ceil((double)height_ / ret.sts) + 1;
+    return ret;
+}
 
-    // Compute grid dimensions from canvas size
-    const int cols = (int)ceil((double)width_  / sts) + 1;
-    const int rows = (int)ceil((double)height_ / sts) + 1;
-    const int gridSize = cols * rows;
+uint8_t MapRenderer::_updateAndQueueTiles(const TileGridCtx& ctx, uint32_t now, bool allowQueue) {
+    // Collect missing tiles into loadQueue_ of TileLoadRequest
+    uint8_t updated = 0;
 
-    for (int j = 0; j < TILECACHE_SIZE; j++) cache_[j].onscreen = false; //reset all
-    struct TileSlot { int x,y; int tx,ty; };
-    TileSlot missing[TILECACHE_SIZE] = {0};
-    uint8_t missingIdx = 0;
+    for (int row = 0; row < ctx.rows; row++) {
+        for (int col = 0; col < ctx.cols; col++) {
 
-    // Step 1: mark existing tiles; collect missing
-    for (int row = 0; row < rows; row++) {
-        for (int col = 0; col < cols; col++) {
-            if (missingIdx >= TILECACHE_SIZE) break; // safety
+            const int gx = ((ctx.tx_s + col) % ctx.nTiles + ctx.nTiles) % ctx.nTiles;
+            const int gy = ctx.ty_s + row;
+            if (gy < 0 || gy >= ctx.nTiles) continue;
 
-            const int gx = ((tx_s + col) % nTiles + nTiles) % nTiles;
-            const int gy = ty_s + row;
-            if (gy < 0 || gy >= nTiles) continue;
-
-            const int tpx = px_s + col * (int)sts;
-            const int tpy = py_s + row * (int)sts;
+            const int tpx = ctx.px_s + col * (int)ctx.sts;
+            const int tpy = ctx.py_s + row * (int)ctx.sts;
 
             // Skip tiles entirely outside the canvas
-            if (tpx + (int)sts <= 0 || tpx >= width_)  continue;
-            if (tpy + (int)sts <= 0 || tpy >= height_) continue;
+            if (tpx + (int)ctx.sts <= 0 || tpx >= width_)  continue;
+            if (tpy + (int)ctx.sts <= 0 || tpy >= height_) continue;
 
             int idx = _findTile(gx, gy, zoom_);
             if (idx != -1) {
                 cache_[idx].update(tpx, tpy, true, magnification_, redrawIdx_);
                 updated++;
-            } else {
-                missing[missingIdx++] = { gx, gy, tpx, tpy };
+            } else if (allowQueue) {
+                _queueTileRequest(gx, gy, zoom_, now, tpx, tpy);
             }
         }
     }
+    return updated;
+}
 
-    // Step 2: Load missing tiles into oldest available slots
-    for (uint8_t slotidx = 0; slotidx < missingIdx; slotidx++) {
-        const auto& m = missing[slotidx];
+bool MapRenderer::_queueTileRequest(int x, int y, int z, uint32_t now, int16_t px, int16_t py) {
+    if (loadQueue_.size() >= TILECACHE_SIZE) return false;
+    //TODO check for duplicates
+    TileLoadRequest req = {x, y, z, now, px, py};
+    loadQueue_.push_back(req);
+    return true;
+}
+
+bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
+    if (!loadQueue_.empty()) {
+        const auto m = loadQueue_.front();
+        loadQueue_.pop_front();
 
         int newIdx = _findSlot();
+        auto& tile = cache_[newIdx];
         if (newIdx != -1) { // found empty slot
             auto& tile = cache_[newIdx];
             Bounds crop;
@@ -277,22 +316,16 @@ void MapRenderer::_updateTiles() {
                 if (smartInvert_ && !tile.buffer.isInverted())
                     tile.buffer.doInvert(true);
                 lv_img_set_src(tile.img_obj, &tile.dsc_);
-                tile.update(m.tx, m.ty, true, magnification_, redrawIdx_);
-                loaded++;
-            } else {
-                tile.z = -1;
-            }
+                if (m.tx != INT16_MIN && m.ty != INT16_MIN)
+                    tile.update(m.tx, m.ty, true, magnification_, redrawIdx_); //straight to screen
+                else tile.update(0, 0, false); //offscreen cache load
+                return true;
+            } else MAP_LOG("ERROR loading tile %d,%d,%d", m.x, m.y, m.z);
         } else MAP_LOG("ERROR: no empty tile slots!");
     }
-
-    for (int j = 0; j < TILECACHE_SIZE; j++)
-        if (!cache_[j].onscreen)
-            cache_[j].update(0, 0, false);
-
-    MAP_LOG("tiledraw[%d] l %d u %d in %d", redrawIdx_, loaded, updated, millis() - start);
-    redrawIdx_++;
-    _updateLayers();
+    return false;
 }
+
 
 // Static geo math
 

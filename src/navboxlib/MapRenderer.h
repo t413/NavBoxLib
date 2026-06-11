@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <vector>
+#include <deque>
 #include <lvgl.h>
 #include <algorithm>
 #include "GeoPoint.h"
@@ -36,6 +37,7 @@ public:
         void update(int px, int py, bool visible, int8_t magnification = 1, uint32_t redrawIdx = 0);
         void clear();
     };
+    struct TileLoadRequest { int x, y, z; uint32_t queuedAt; int16_t tx, ty;};
     struct XY { int16_t x, y; };
 
     MapRenderer() = default;
@@ -44,6 +46,7 @@ public:
     bool begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fmt, uint16_t tileSize = 256);
     void setXY(uint16_t x, uint16_t y);
     void invalidate();
+    uint8_t iterate(uint32_t now, bool loadAll = false);
 
     bool project(double lat, double lon, lv_coord_t& px, lv_coord_t& py) const; /// get display px position of a lat/lon point
     bool isVisible(lv_coord_t px, lv_coord_t py) const;
@@ -80,7 +83,8 @@ protected:
     const char*    pathPattern_ = nullptr;
     zoom_t         zoom_ = 12;
     zoom_t         magnification_ = 1;
-    TileCacheEntry cache_[TILECACHE_SIZE];
+    std::vector<TileCacheEntry> cache_;
+    std::deque<TileLoadRequest> loadQueue_;
     uint32_t redrawIdx_ = 0;
     std::vector<MapLayer*> layers_;
     MarkerLayer* markerLayer_ = nullptr;
@@ -101,9 +105,19 @@ public: //utility methods, helpful to unit test
     static double _tileYToLat(double ty, int z);
     int _findTile(int x, int y, int z);
     int _findSlot();
-    void _updateTiles();
+    void _updateTiles(uint32_t now, bool blockingload = false);
     void _updateLayers();
     lv_obj_t* getLvglBase() const { return obj_; }
+
+    struct TileGridCtx {
+        int sts, cols, rows, tx_s, ty_s, px_s, py_s, nTiles;
+    };
+
+    TileGridCtx _calcTileGrid(double lat, double lon, zoom_t zoom) const;
+    uint8_t _updateAndQueueTiles(const TileGridCtx&, uint32_t now, bool allowQueue=true);
+    bool _queueTileRequest(int x, int y, int z, uint32_t now, int16_t tx=INT16_MIN, int16_t ty=INT16_MIN);
+    bool _loadOneQueuedTile(uint32_t now);  // called from iterate(), loads 1 tile with timeout
+
 };
 
 int freeHeap();
