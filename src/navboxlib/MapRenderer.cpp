@@ -23,6 +23,7 @@ const PixelBuffer* MapRenderer::TileCacheEntry::load(int ox, int oy, int oz, con
         dsc_.header.cf = LV_IMG_CF_TRUE_COLOR;
         dsc_.data = (const uint8_t*)buffer.getData();
 #endif
+        lv_img_set_src(img_obj, &dsc_);
         return &buffer;
     } else MAP_LOG("tile::load failed loading %s (free: %u)", path, freeHeap());
     return nullptr;
@@ -36,7 +37,6 @@ void MapRenderer::TileCacheEntry::update(int px, int py, bool visible, zoom_t sc
         lv_img_set_zoom(img_obj, (uint16_t)(scale * buffer.uncroppedW_)); //TODO allow fractional zoom
         lv_obj_set_pos(img_obj, adjustedX, adjustedY);
         lv_obj_clear_flag(img_obj, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_to_index(img_obj, lv_obj_get_index(img_obj) - 1); //forground
     } else {
         lv_obj_add_flag(img_obj, LV_OBJ_FLAG_HIDDEN);
     }
@@ -87,6 +87,7 @@ bool MapRenderer::begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fm
         lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
     }
     lv_obj_set_style_bg_color(base_, lv_color_hex(colBg_), 0);
+    lv_obj_set_style_bg_opa(tilesBase_, LV_OPA_TRANSP, 0);
 
     // Create fixed image objects for the 2x2 grid
     cache_.resize(TILECACHE_SIZE);
@@ -101,12 +102,6 @@ bool MapRenderer::begin(lv_obj_t* parent, uint16_t w, uint16_t h, const char* fm
 void MapRenderer::setXY(uint16_t x, uint16_t y) { lv_obj_set_pos(base_, (x_ = x), (y_ = y)); }
 
 void MapRenderer::invalidate() {
-    if (cropmode_) { //invalidate cache first
-        MAP_LOG("cropmode enabled, clearing tile cache on recenter");
-        for (auto& t : cache_)
-            t.clear();
-        mempool_.reset();
-    }
     _updateTiles(millis(), cropmode_);
 }
 
@@ -227,10 +222,16 @@ void MapRenderer::_updateLayers() {
 
 void MapRenderer::_updateTiles(uint32_t now, bool blockingload) {
     if (!base_ || !tilesBase_) return;
-    if (cropmode_ && !mempool_.buf_) { //runs the first time, or after being unloaded
-        mempool_.init(width_ * height_ * sizeof(pixel_t) + 2048); // a little extra
-        for (auto& t : cache_) t.buffer.setMemPool(&mempool_);
-        MAP_LOG("tiles cropmode mempool allocated %d bytes (%dx%d)", mempool_.bufsize_, width_, height_);
+    if (cropmode_) {
+        if (!mempool_.buf_) { //runs the first time, or after being unloaded
+            mempool_.init(width_ * height_ * sizeof(pixel_t) + 2048); // a little extra
+            for (auto& t : cache_) t.buffer.setMemPool(&mempool_);
+            MAP_LOG("tiles cropmode mempool allocated %d bytes (%dx%d)", mempool_.bufsize_, width_, height_);
+        }
+        MAP_LOG("cropmode enabled, clearing tile cache on recenter");
+        for (auto& t : cache_)
+            t.clear();
+        mempool_.reset();
     }
 
     for (auto& t : cache_)
@@ -360,11 +361,9 @@ bool MapRenderer::_loadOneQueuedTile(uint32_t now) {
             if (tile.load(m.x, m.y, m.z, pathPattern_, crop)) {
                 if (smartInvert_ && !tile.buffer.isFiltered())
                     tile.buffer.doInvert(true);
-                lv_img_set_src(tile.img_obj, &tile.dsc_);
-                MAP_LOG("tile loaded %d,%d,%d -> %d,%d scale %.2f", m.x, m.y, m.z, dest.x, dest.y, scale);
                 if (dest.x != INT16_MIN && dest.y != INT16_MIN) {
                     tile.update(dest.x, dest.y, true, scale, redrawIdx_); //straight to screen
-                    if (m.z == zoom_)
+                    if (m.z == zoom_ && !cropmode_)
                         _mvForground(tile);
                 } else tile.update(0, 0, false); //offscreen cache load
                 return true;
